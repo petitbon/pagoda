@@ -39,9 +39,11 @@ in their user-level Yarn or npm config.
 ## Pagoda Workflow
 
 `.github/workflows/pagoda.yml` is the only GitHub Actions workflow. It builds,
-validates, and tests pull requests. On pushes to `main`, it also creates the
-next patch tag and publishes packages. On manually pushed `vMAJOR.MINOR.PATCH`
-tags, it publishes that tag version directly.
+validates, and tests pull requests with read-only repository permissions. On
+pushes to `main`, it creates the next patch tag and publishes packages from a
+separate release job. On manually pushed `vMAJOR.MINOR.PATCH` tags, it publishes
+that tag version directly. It also supports a manual workflow dispatch with an
+explicit `release_version` input.
 
 The workflow needs:
 
@@ -53,6 +55,11 @@ permissions:
 
 No npm organization, npm token, npm trusted publisher, or npm provenance setup is
 required for this deployment path.
+
+If the GitHub repository is recreated without old tags, use the manual workflow
+dispatch for the first publish and choose the next unused package version, for
+example `0.1.23` after a last known `0.1.22` release. GitHub Packages does not
+allow overwriting an already-published package version.
 
 ## Main Release Flow
 
@@ -77,6 +84,13 @@ Examples:
 The workflow also handles manually pushed version tags. It skips publish steps
 for bot-created tag events so the automatic `main` release flow cannot
 double-publish the same version.
+
+## Manual Release Flow
+
+Use **Actions -> Pagoda -> Run workflow** and set `release_version` to the exact
+version to publish, without the leading `v`. The workflow validates the semver
+string, creates `v<release_version>`, builds, validates, tests, publishes all
+four packages, and creates the GitHub release assets.
 
 ## First Publish Access
 
