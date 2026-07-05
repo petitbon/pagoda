@@ -53,13 +53,25 @@ permissions:
   packages: write
 ```
 
-No npm organization, npm token, npm trusted publisher, or npm provenance setup is
-required for this deployment path.
+For packages already owned by the organization, especially after recreating the
+repository, the workflow may also need a repository secret named
+`PAGODA_PACKAGES_TOKEN`. Use a classic PAT from a maintainer with package
+publish rights and at least `write:packages` and `read:packages`. If GitHub
+Packages reports `permission_denied: write_package`, add this secret or grant
+the recreated repository Actions access to each existing package in GitHub
+Packages settings.
+
+No npm organization, npm trusted publisher, or npm provenance setup is required
+for this deployment path.
 
 If the GitHub repository is recreated without old tags, use the manual workflow
 dispatch for the first publish and choose the next unused package version, for
 example `0.1.23` after a last known `0.1.22` release. GitHub Packages does not
 allow overwriting an already-published package version.
+
+The automatic main-branch version calculation also uses the checked-in Homebrew
+formula version as a floor, so a recreated repository with missing old tags will
+not automatically fall back below the last formula release.
 
 ## Main Release Flow
 
@@ -94,11 +106,14 @@ four packages, and creates the GitHub release assets.
 
 ## First Publish Access
 
-After the first successful publish, verify each package in GitHub Packages:
+Before the first publish from a recreated repository, verify each existing
+package in GitHub Packages:
 
 1. The package is linked to `petitbon/pagoda`.
 2. The package is public, or it inherits public access from the repository.
 3. The repository has admin/write access to publish future versions.
+4. If repository package access cannot be granted yet, create the
+   `PAGODA_PACKAGES_TOKEN` repository secret.
 
 Repeat this check for all four public packages. This is a GitHub Packages setup
 step, not a code change, and it only needs to be corrected when package access

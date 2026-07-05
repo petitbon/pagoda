@@ -82,6 +82,10 @@ jobs:
           const fs = require('fs');
 
           const baseVersion = JSON.parse(fs.readFileSync('packages/pagoda-core/package.json', 'utf8')).version.split('-')[0];
+          const formulaText = fs.existsSync('Formula/pagoda.rb')
+            ? fs.readFileSync('Formula/pagoda.rb', 'utf8')
+            : '';
+          const formulaVersion = /^  version "([^"]+)"/m.exec(formulaText)?.[1];
 
           function parse(version) {
             const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
@@ -96,6 +100,10 @@ jobs:
             return 0;
           }
 
+          function nextPatch(parts) {
+            return [parts[0], parts[1], parts[2] + 1];
+          }
+
           const tags = execSync('git tag --list "v[0-9]*.[0-9]*.[0-9]*"', { encoding: 'utf8' })
             .split('\n')
             .map((tag) => tag.trim())
@@ -104,21 +112,25 @@ jobs:
             .filter((version) => /^\d+\.\d+\.\d+$/.test(version));
 
           const base = parse(baseVersion);
+          const releasedVersions = [
+            ...tags,
+            ...(formulaVersion && /^\d+\.\d+\.\d+$/.test(formulaVersion) ? [formulaVersion] : [])
+          ];
           let next = base;
 
-          if (tags.length > 0) {
-            const latest = tags
+          if (releasedVersions.length > 0) {
+            const latest = releasedVersions
               .map((version) => ({ version, parts: parse(version) }))
               .sort((left, right) => compare(right.parts, left.parts))[0];
 
             next = compare(base, latest.parts) > 0
               ? base
-              : [latest.parts[0], latest.parts[1], latest.parts[2] + 1];
+              : nextPatch(latest.parts);
           }
 
-          const existing = new Set(tags);
+          const existing = new Set(releasedVersions);
           while (existing.has(next.join('.'))) {
-            next = [next[0], next[1], next[2] + 1];
+            next = nextPatch(next);
           }
 
           console.log(next.join('.'));
@@ -267,25 +279,25 @@ jobs:
         run: npm publish
         working-directory: packages/pagoda-core
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.PAGODA_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Publish adapter SDK
         run: npm publish
         working-directory: packages/pagoda-adapter-sdk
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.PAGODA_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Publish runner
         run: npm publish
         working-directory: packages/pagoda-runner
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.PAGODA_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Publish CLI
         run: npm publish
         working-directory: packages/pagoda-cli
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.PAGODA_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v3
