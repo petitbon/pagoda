@@ -1,0 +1,4 @@
+{
+  "scenarioId": "DEMO-SETUP-MISSING-001",
+  "expectedStatus": "SETUP_FAILED"
+}

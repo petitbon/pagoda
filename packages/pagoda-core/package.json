@@ -1,0 +1,77 @@
+{
+  "name": "@petitbon/pagoda-core",
+  "version": "0.1.0",
+  "description": "Canonical validation model, projection, validators, oracle, and evidence helpers for Pagoda.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/petitbon/pagoda.git",
+    "directory": "packages/pagoda-core"
+  },
+  "bugs": {
+    "url": "https://github.com/petitbon/pagoda/issues"
+  },
+  "homepage": "https://github.com/petitbon/pagoda#readme",
+  "keywords": [
+    "agentic",
+    "ai",
+    "validation",
+    "evals",
+    "testing",
+    "oracle"
+  ],
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "import": "./dist/types.js"
+    },
+    "./projection": {
+      "types": "./dist/projection.d.ts",
+      "import": "./dist/projection.js"
+    },
+    "./validation": {
+      "types": "./dist/validation.d.ts",
+      "import": "./dist/validation.js"
+    },
+    "./evidence": {
+      "types": "./dist/evidence/outcome-contract.d.ts",
+      "import": "./dist/evidence/outcome-contract.js"
+    },
+    "./oracle": {
+      "types": "./dist/oracle/evaluate.d.ts",
+      "import": "./dist/oracle/evaluate.js"
+    }
+  },
+  "files": [
+    "dist/*.js",
+    "dist/*.js.map",
+    "dist/*.d.ts",
+    "dist/*.d.ts.map",
+    "dist/**/*.js",
+    "dist/**/*.js.map",
+    "dist/**/*.d.ts",
+    "dist/**/*.d.ts.map",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run src --passWithNoTests"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.9"
+  }
+}

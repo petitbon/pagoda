@@ -1,0 +1,20 @@
+{
+  "name": "@petitbon/pagoda-target-demo-agent",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run adapters --passWithNoTests",
+    "validate": "yarn workspace @petitbon/pagoda-cli pagoda validate --target demo-agent",
+    "compile": "yarn workspace @petitbon/pagoda-cli pagoda compile --target demo-agent"
+  },
+  "dependencies": {
+    "@petitbon/pagoda-adapter-sdk": "workspace:*",
+    "@petitbon/pagoda-core": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.9"
+  }
+}

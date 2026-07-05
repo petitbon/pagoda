@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "pagoda.target",
+  "id": "demo-agent",
+  "name": "Demo Agent",
+  "description": "Synthetic target pack for Pagoda OSS examples and tests.",
+  "paths": {
+    "scenarios": "docs/pagoda/scenarios",
+    "evidenceMaps": "docs/pagoda/evidence-maps",
+    "contracts": "docs/pagoda/contracts",
+    "adapters": "adapters",
+    "traces": "docs/pagoda/traces",
+    "reports": "docs/pagoda/reports"
+  },
+  "defaultAdapter": "deterministic",
+  "scenarioMappings": [
+    {
+      "pagodaScenarioId": "DEMO-PROPOSAL-PRESENTED-001",
+      "targetEvaluatorId": "DEMO-PASS"
+    },
+    {
+      "pagodaScenarioId": "DEMO-FORBIDDEN-COMMIT-001",
+      "targetEvaluatorId": "DEMO-FAIL"
+    },
+    {
+      "pagodaScenarioId": "DEMO-OBSERVABILITY-MISSING-001",
+      "targetEvaluatorId": "DEMO-OBSERVABILITY"
+    },
+    {
+      "pagodaScenarioId": "DEMO-SETUP-MISSING-001",
+      "targetEvaluatorId": "DEMO-SETUP"
+    }
+  ],
+  "channels": [
+    "browser-chat"
+  ],
+  "requiredEnv": {}
+}

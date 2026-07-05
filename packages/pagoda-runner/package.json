@@ -1,0 +1,61 @@
+{
+  "name": "@petitbon/pagoda-runner",
+  "version": "0.1.0",
+  "description": "Target-neutral run plans, artifact bundles, replay support, and reports for Pagoda.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/petitbon/pagoda.git",
+    "directory": "packages/pagoda-runner"
+  },
+  "bugs": {
+    "url": "https://github.com/petitbon/pagoda/issues"
+  },
+  "homepage": "https://github.com/petitbon/pagoda#readme",
+  "keywords": [
+    "agentic",
+    "ai",
+    "validation",
+    "evals",
+    "testing",
+    "artifacts"
+  ],
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/*.js",
+    "dist/*.js.map",
+    "dist/*.d.ts",
+    "dist/*.d.ts.map",
+    "dist/**/*.js",
+    "dist/**/*.js.map",
+    "dist/**/*.d.ts",
+    "dist/**/*.d.ts.map",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run src --passWithNoTests"
+  },
+  "dependencies": {
+    "@petitbon/pagoda-adapter-sdk": "0.1.0",
+    "@petitbon/pagoda-core": "0.1.0"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.9"
+  }
+}

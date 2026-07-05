@@ -1,0 +1,4 @@
+{
+  "scenarioId": "DEMO-OBSERVABILITY-MISSING-001",
+  "expectedStatus": "OBSERVABILITY_FAILED"
+}

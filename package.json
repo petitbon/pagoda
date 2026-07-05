@@ -1,0 +1,33 @@
+{
+  "name": "pagoda",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Target-agnostic validation framework for agentic software.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/petitbon/pagoda.git"
+  },
+  "bugs": {
+    "url": "https://github.com/petitbon/pagoda/issues"
+  },
+  "homepage": "https://github.com/petitbon/pagoda#readme",
+  "packageManager": "yarn@4.13.0",
+  "workspaces": [
+    "packages/*",
+    "targets/*"
+  ],
+  "scripts": {
+    "build": "yarn workspace @petitbon/pagoda-core build && yarn workspace @petitbon/pagoda-adapter-sdk build && yarn workspace @petitbon/pagoda-runner build && yarn workspace @petitbon/pagoda-cli build && yarn workspace @petitbon/pagoda-target-demo-agent build",
+    "test": "yarn workspace @petitbon/pagoda-core test && yarn workspace @petitbon/pagoda-adapter-sdk test && yarn workspace @petitbon/pagoda-runner test && yarn workspace @petitbon/pagoda-cli test && yarn workspace @petitbon/pagoda-target-demo-agent test",
+    "validate": "yarn workspace @petitbon/pagoda-cli pagoda validate",
+    "compile": "yarn workspace @petitbon/pagoda-cli pagoda compile"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.1",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
+  }
+}

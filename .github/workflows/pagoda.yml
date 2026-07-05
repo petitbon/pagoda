@@ -1,0 +1,308 @@
+name: Pagoda
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pagoda-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          registry-url: https://npm.pkg.github.com
+          scope: '@petitbon'
+
+      - run: corepack enable
+      - run: yarn install --immutable
+
+      - name: Build
+        run: yarn build
+
+      - name: Validate
+        run: yarn validate
+
+      - name: Test
+        run: yarn test
+
+  release:
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || (startsWith(github.ref, 'refs/tags/v') && github.actor != 'github-actions[bot]'))
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          registry-url: https://npm.pkg.github.com
+          scope: '@petitbon'
+
+      - run: corepack enable
+      - run: yarn install --immutable
+
+      - name: Determine release version
+        run: |
+          git fetch --tags --force
+
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="$(node <<'NODE'
+          const { execSync } = require('child_process');
+          const fs = require('fs');
+
+          const baseVersion = JSON.parse(fs.readFileSync('packages/pagoda-core/package.json', 'utf8')).version.split('-')[0];
+
+          function parse(version) {
+            const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
+            if (!match) throw new Error(`Invalid semver version: ${version}`);
+            return match.slice(1).map(Number);
+          }
+
+          function compare(a, b) {
+            for (let index = 0; index < 3; index += 1) {
+              if (a[index] !== b[index]) return a[index] - b[index];
+            }
+            return 0;
+          }
+
+          const tags = execSync('git tag --list "v[0-9]*.[0-9]*.[0-9]*"', { encoding: 'utf8' })
+            .split('\n')
+            .map((tag) => tag.trim())
+            .filter(Boolean)
+            .map((tag) => tag.slice(1))
+            .filter((version) => /^\d+\.\d+\.\d+$/.test(version));
+
+          const base = parse(baseVersion);
+          let next = base;
+
+          if (tags.length > 0) {
+            const latest = tags
+              .map((version) => ({ version, parts: parse(version) }))
+              .sort((left, right) => compare(right.parts, left.parts))[0];
+
+            next = compare(base, latest.parts) > 0
+              ? base
+              : [latest.parts[0], latest.parts[1], latest.parts[2] + 1];
+          }
+
+          const existing = new Set(tags);
+          while (existing.has(next.join('.'))) {
+            next = [next[0], next[1], next[2] + 1];
+          }
+
+          console.log(next.join('.'));
+          NODE
+            )"
+          fi
+
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release version must be MAJOR.MINOR.PATCH, got: $VERSION" >&2
+            exit 1
+          fi
+
+          echo "PAGODA_RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "PAGODA_RELEASE_TAG=v$VERSION" >> "$GITHUB_ENV"
+
+      - name: Create release tag
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$PAGODA_RELEASE_TAG" -m "Release $PAGODA_RELEASE_TAG"
+          git push origin "$PAGODA_RELEASE_TAG"
+
+      - name: Check out release tag
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: git checkout "$PAGODA_RELEASE_TAG"
+
+      - name: Set package versions from release tag
+        run: |
+          VERSION="$PAGODA_RELEASE_VERSION" node <<'NODE'
+          const fs = require('fs');
+
+          const version = process.env.VERSION;
+          const packagePaths = [
+            'packages/pagoda-core/package.json',
+            'packages/pagoda-adapter-sdk/package.json',
+            'packages/pagoda-runner/package.json',
+            'packages/pagoda-cli/package.json'
+          ];
+          const publicPackageNames = new Set([
+            '@petitbon/pagoda-core',
+            '@petitbon/pagoda-adapter-sdk',
+            '@petitbon/pagoda-runner',
+            '@petitbon/pagoda-cli'
+          ]);
+
+          for (const packagePath of packagePaths) {
+            const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+            pkg.version = version;
+            for (const dependencyField of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']) {
+              const dependencies = pkg[dependencyField];
+              if (!dependencies) continue;
+              for (const dependencyName of Object.keys(dependencies)) {
+                if (publicPackageNames.has(dependencyName)) {
+                  dependencies[dependencyName] = version;
+                }
+              }
+            }
+            fs.writeFileSync(packagePath, `${JSON.stringify(pkg, null, 2)}\n`);
+          }
+          NODE
+
+      - name: Build release packages
+        run: yarn build
+
+      - name: Validate release packages
+        run: yarn validate
+
+      - name: Test release packages
+        run: yarn test
+
+      - name: Dry-run core package contents
+        run: npm pack --dry-run
+        working-directory: packages/pagoda-core
+
+      - name: Dry-run adapter SDK package contents
+        run: npm pack --dry-run
+        working-directory: packages/pagoda-adapter-sdk
+
+      - name: Dry-run runner package contents
+        run: npm pack --dry-run
+        working-directory: packages/pagoda-runner
+
+      - name: Dry-run CLI package contents
+        run: npm pack --dry-run
+        working-directory: packages/pagoda-cli
+
+      - name: Pack standalone CLI release asset
+        run: |
+          ASSET_ROOT="$RUNNER_TEMP/pagoda-cli-standalone"
+          ASSET_OUT="$RUNNER_TEMP/pagoda-release-assets"
+          rm -rf "$ASSET_ROOT" "$ASSET_OUT"
+          mkdir -p "$ASSET_ROOT/dist" "$ASSET_OUT"
+
+          node_modules/.bin/esbuild packages/pagoda-cli/src/index.ts \
+            --bundle \
+            --platform=node \
+            --format=esm \
+            --target=node22 \
+            --outfile="$ASSET_ROOT/dist/index.js"
+
+          chmod +x "$ASSET_ROOT/dist/index.js"
+          cp packages/pagoda-cli/README.md "$ASSET_ROOT/README.md"
+          cp packages/pagoda-cli/LICENSE "$ASSET_ROOT/LICENSE"
+          cp -R packages/pagoda-cli/templates "$ASSET_ROOT/templates"
+
+          VERSION="$PAGODA_RELEASE_VERSION" node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+
+          const root = process.env.RUNNER_TEMP + '/pagoda-cli-standalone';
+          const version = process.env.VERSION;
+          const pkg = {
+            name: '@petitbon/pagoda-cli',
+            version,
+            description: 'Standalone Pagoda CLI release asset.',
+            license: 'Apache-2.0',
+            type: 'module',
+            bin: {
+              pagoda: './dist/index.js'
+            },
+            files: [
+              'dist/index.js',
+              'templates/**/*.md',
+              'templates/**/*.yaml',
+              'README.md',
+              'LICENSE'
+            ],
+            engines: {
+              node: '>=22'
+            }
+          };
+
+          fs.writeFileSync(path.join(root, 'package.json'), `${JSON.stringify(pkg, null, 2)}\n`);
+          NODE
+
+          npm pack "$ASSET_ROOT" --pack-destination "$ASSET_OUT"
+          mv "$ASSET_OUT"/petitbon-pagoda-cli-"$PAGODA_RELEASE_VERSION".tgz "$ASSET_OUT"/pagoda-cli-standalone-"$PAGODA_RELEASE_VERSION".tgz
+          cp "$ASSET_OUT"/pagoda-cli-standalone-"$PAGODA_RELEASE_VERSION".tgz "$ASSET_OUT"/pagoda-cli-standalone.tgz
+
+      - name: Publish core
+        run: npm publish
+        working-directory: packages/pagoda-core
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish adapter SDK
+        run: npm publish
+        working-directory: packages/pagoda-adapter-sdk
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish runner
+        run: npm publish
+        working-directory: packages/pagoda-runner
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish CLI
+        run: npm publish
+        working-directory: packages/pagoda-cli
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ env.PAGODA_RELEASE_TAG }}
+          generate_release_notes: true
+          files: |
+            ${{ runner.temp }}/pagoda-release-assets/pagoda-cli-standalone-${{ env.PAGODA_RELEASE_VERSION }}.tgz
+            ${{ runner.temp }}/pagoda-release-assets/pagoda-cli-standalone.tgz
+
+      - name: Update Homebrew formula on main
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.actor != 'github-actions[bot]'
+        run: |
+          FORMULA_WORKTREE="$RUNNER_TEMP/pagoda-homebrew-formula"
+          RELEASE_ASSET="$RUNNER_TEMP/pagoda-release-assets/pagoda-cli-standalone-$PAGODA_RELEASE_VERSION.tgz"
+
+          git fetch origin main
+          git worktree add -B main "$FORMULA_WORKTREE" origin/main
+
+          cd "$FORMULA_WORKTREE"
+          node scripts/update-homebrew-formula.mjs "$PAGODA_RELEASE_TAG" "$RELEASE_ASSET"
+
+          if git diff --quiet -- Formula/pagoda.rb; then
+            echo "Homebrew formula already points at $PAGODA_RELEASE_TAG."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/pagoda.rb
+          git commit -m "chore(homebrew): update pagoda formula to $PAGODA_RELEASE_TAG [skip ci]"
+          git push origin HEAD:main

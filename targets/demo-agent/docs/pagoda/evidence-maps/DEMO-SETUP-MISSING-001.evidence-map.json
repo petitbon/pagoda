@@ -1,0 +1,144 @@
+{
+  "schemaVersion": "pagoda.evidence-map",
+  "id": "DEMO-SETUP-MISSING-001",
+  "scenarioId": "DEMO-SETUP-MISSING-001",
+  "outcomeContractId": "DEMO-SETUP-MISSING-001",
+  "title": "Demo setup failure is classified separately evidence map",
+  "owner": "pagoda-demo",
+  "nodes": [
+    {
+      "id": "actor-demo-user",
+      "type": "actor",
+      "label": "Demo User",
+      "summary": "A synthetic user requests a proposal.",
+      "owner": "pagoda-demo",
+      "channels": [
+        "browser-chat"
+      ]
+    },
+    {
+      "id": "intent-request",
+      "type": "intent",
+      "label": "Request Proposal",
+      "summary": "The request asks for a proposal without committing a side effect.",
+      "owner": "pagoda-demo",
+      "evidenceCodes": [
+        "DEMO_BROWSER_OUTPUT"
+      ],
+      "traceSources": [
+        "transcript"
+      ],
+      "channels": [
+        "browser-chat"
+      ]
+    },
+    {
+      "id": "authority-demo-fixture",
+      "type": "authority",
+      "label": "Demo Fixture",
+      "summary": "The deterministic fixture is the trusted evidence authority.",
+      "owner": "pagoda-demo"
+    },
+    {
+      "id": "fact-outcome",
+      "type": "fact",
+      "label": "Outcome Fact",
+      "summary": "The proposal outcome is recorded as trusted evidence.",
+      "owner": "pagoda-demo",
+      "evidenceCodes": [
+        "DEMO_OUTCOME_PROVEN",
+        "DemoOutcomeRecorded"
+      ]
+    },
+    {
+      "id": "evidence-transcript",
+      "type": "evidence",
+      "label": "Transcript Evidence",
+      "summary": "A transcript observation proves the user-visible proposal.",
+      "owner": "pagoda-demo",
+      "traceSources": [
+        "transcript"
+      ]
+    },
+    {
+      "id": "side-effect-forbidden",
+      "type": "side_effect",
+      "label": "Forbidden Commit",
+      "summary": "A commit side effect is forbidden before approval.",
+      "owner": "pagoda-demo",
+      "evidenceCodes": [
+        "DEMO_FORBIDDEN_COMMIT"
+      ]
+    },
+    {
+      "id": "oracle-classification",
+      "type": "oracle",
+      "label": "Oracle Classification",
+      "summary": "The oracle classifies the canonical observation.",
+      "owner": "pagoda-core"
+    },
+    {
+      "id": "outcome-demo",
+      "type": "outcome",
+      "label": "Demo Outcome",
+      "summary": "A proposal is proven by trusted evidence.",
+      "owner": "pagoda-demo"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-user-intent",
+      "type": "initiates",
+      "sourceId": "actor-demo-user",
+      "targetId": "intent-request",
+      "label": "initiates"
+    },
+    {
+      "id": "edge-intent-authority",
+      "type": "requires",
+      "sourceId": "intent-request",
+      "targetId": "authority-demo-fixture",
+      "label": "requires"
+    },
+    {
+      "id": "edge-authority-fact",
+      "type": "authorizes",
+      "sourceId": "authority-demo-fixture",
+      "targetId": "fact-outcome",
+      "label": "authorizes"
+    },
+    {
+      "id": "edge-fact-evidence",
+      "type": "proves",
+      "sourceId": "fact-outcome",
+      "targetId": "evidence-transcript",
+      "label": "proves"
+    },
+    {
+      "id": "edge-side-effect",
+      "type": "forbids",
+      "sourceId": "side-effect-forbidden",
+      "targetId": "outcome-demo",
+      "label": "forbids"
+    },
+    {
+      "id": "edge-oracle-outcome",
+      "type": "classifies",
+      "sourceId": "oracle-classification",
+      "targetId": "outcome-demo",
+      "label": "classifies"
+    }
+  ],
+  "traceContract": {
+    "requiredSources": [
+      "transcript"
+    ],
+    "correlation": [
+      "channel"
+    ],
+    "ordering": [
+      "eventTime"
+    ],
+    "missingEvidenceStatus": "OBSERVABILITY_FAILED"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/pagoda-core" },
+    { "path": "packages/pagoda-adapter-sdk" },
+    { "path": "packages/pagoda-runner" },
+    { "path": "packages/pagoda-cli" }
+  ]
+}

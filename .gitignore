@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.cache/
+.yarn/
+.pnp.*
+.DS_Store
+*.log
+.env
+artifacts/**
+!artifacts/.gitkeep
+*.tsbuildinfo

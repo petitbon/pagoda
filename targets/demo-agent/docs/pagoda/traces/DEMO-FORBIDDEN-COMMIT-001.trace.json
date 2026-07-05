@@ -1,0 +1,4 @@
+{
+  "scenarioId": "DEMO-FORBIDDEN-COMMIT-001",
+  "expectedStatus": "FAIL"
+}

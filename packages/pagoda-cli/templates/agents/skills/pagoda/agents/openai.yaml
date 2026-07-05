@@ -1,0 +1,7 @@
+interface:
+  display_name: "Pagoda"
+  short_description: "Author and run Pagoda validation scenarios"
+  default_prompt: "Use $pagoda to add a new evidence-backed scenario and validate it."
+
+policy:
+  allow_implicit_invocation: true

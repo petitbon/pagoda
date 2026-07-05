@@ -1,0 +1,108 @@
+{
+  "schemaVersion": "pagoda.outcome-contract",
+  "id": "DEMO-PROPOSAL-PRESENTED-001",
+  "scenarioId": "DEMO-PROPOSAL-PRESENTED-001",
+  "mapId": "DEMO-PROPOSAL-PRESENTED-001",
+  "outcome": "demo-proof",
+  "sourceScenarioPath": "docs/pagoda/scenarios/demo-proposal-presented-001.scenario.json",
+  "title": "Demo proposal is presented from trusted evidence",
+  "owner": "pagoda-demo",
+  "labels": {
+    "domain": "demo",
+    "outcome": "demo-proof",
+    "risk": "low",
+    "channels": [
+      "browser-chat"
+    ]
+  },
+  "channels": [
+    "browser-chat"
+  ],
+  "intent": {
+    "actor": "demo-user",
+    "kind": "request proposal",
+    "summary": "A demo user asks the target agent to propose an allowed next step."
+  },
+  "fixture": {
+    "requiredState": [
+      "Demo fixture is loaded."
+    ],
+    "requiredFixtures": [
+      "deterministic demo observation fixture"
+    ],
+    "setupEvidenceCodes": [
+      "DEMO_SETUP_READY"
+    ]
+  },
+  "requiredEvidence": {
+    "requiredTraceSources": [
+      "transcript"
+    ],
+    "acceptedEvidenceCodes": [
+      "DEMO_OUTCOME_PROVEN"
+    ],
+    "rejectedEvidenceCodes": [
+      "DEMO_FORBIDDEN_COMMIT"
+    ],
+    "repairCodes": [
+      "DEMO_REPAIR_PATH"
+    ],
+    "requiredWorkflowOutcomes": [
+      "DemoOutcomeRecorded"
+    ]
+  },
+  "channelContracts": {
+    "commonEvidenceCodes": [
+      "DEMO_COMMON_CONTEXT"
+    ],
+    "channels": {
+      "browser-chat": {
+        "requiredEvidenceCodes": [
+          "DEMO_BROWSER_OUTPUT"
+        ],
+        "oracleClauses": [
+          "browser output is observable"
+        ]
+      }
+    },
+    "parity": {
+      "required": false,
+      "compare": [
+        "status"
+      ]
+    }
+  },
+  "trace": {
+    "requiredSources": [
+      "transcript"
+    ],
+    "correlation": [
+      "channel"
+    ],
+    "ordering": [
+      "eventTime"
+    ],
+    "missingEvidenceStatus": "OBSERVABILITY_FAILED"
+  },
+  "forbiddenSideEffects": {
+    "forbiddenToolNames": [
+      "commit_demo_action"
+    ],
+    "forbiddenEvents": [
+      "DemoCommittedWithoutApproval"
+    ],
+    "forbiddenClaims": [
+      "demo action was committed"
+    ]
+  },
+  "harness": {
+    "suite": "deterministic-demo",
+    "scenario": "pass",
+    "selectedCase": "DEMO-PROPOSAL-PRESENTED-001.case"
+  },
+  "generatedFrom": {
+    "scenarioHash": "sha256:40500ccdd030bcf435da08bbb6af560aae729c0e2af7d3dd41019e752d4e2f96",
+    "evidenceMapHash": "sha256:e7660667994943a9b489ad136ec67a7a3253e7b48c2ae7d25f5087f857565d8c",
+    "pagodaCoreVersion": "0.1.0"
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "name": "@petitbon/pagoda-cli",
+  "version": "0.1.0",
+  "description": "Command-line interface for validating agentic software with Pagoda target packs.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/petitbon/pagoda.git",
+    "directory": "packages/pagoda-cli"
+  },
+  "bugs": {
+    "url": "https://github.com/petitbon/pagoda/issues"
+  },
+  "homepage": "https://github.com/petitbon/pagoda#readme",
+  "keywords": [
+    "agentic",
+    "ai",
+    "validation",
+    "evals",
+    "testing",
+    "cli"
+  ],
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "type": "module",
+  "bin": {
+    "pagoda": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/*.js",
+    "dist/*.js.map",
+    "dist/*.d.ts",
+    "dist/*.d.ts.map",
+    "dist/**/*.js",
+    "dist/**/*.js.map",
+    "dist/**/*.d.ts",
+    "dist/**/*.d.ts.map",
+    "templates/**/*.md",
+    "templates/**/*.yaml",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run src --passWithNoTests",
+    "pagoda": "node --import tsx src/index.ts"
+  },
+  "dependencies": {
+    "@petitbon/pagoda-adapter-sdk": "0.1.0",
+    "@petitbon/pagoda-core": "0.1.0",
+    "@petitbon/pagoda-runner": "0.1.0"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.9"
+  }
+}
