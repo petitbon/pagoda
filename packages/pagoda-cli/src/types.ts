@@ -38,6 +38,7 @@ export type PagodaRunCliResult = {
   projectId: string;
   scenarioId: string;
   channel: string;
+  interactionCaseId?: string;
   adapterRunStatus: string;
   evidence: {
     accepted: number;

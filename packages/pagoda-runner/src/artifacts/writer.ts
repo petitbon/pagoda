@@ -19,6 +19,8 @@ export async function writeRunArtifactBundle(input: {
 }): Promise<PagodaRunArtifactManifest> {
   await mkdir(join(input.directory, 'logs'), { recursive: true });
   const files = runArtifactFiles;
+  const manifestFiles: Record<string, string> = { ...files };
+  if (!input.plan.interaction) delete manifestFiles.interaction;
   const manifest: PagodaRunArtifactManifest = {
     schemaVersion: 'pagoda.run-artifact',
     runId: input.plan.runId,
@@ -26,10 +28,11 @@ export async function writeRunArtifactBundle(input: {
     scenarioId: input.plan.scenario.id,
     channel: input.plan.channel,
     seed: input.plan.seed,
+    interactionCaseId: input.plan.interaction?.caseId,
     status: input.oracleResult.status,
     startedAt: input.startedAt,
     completedAt: input.completedAt,
-    files
+    files: manifestFiles
   };
   const payloads: Record<string, unknown> = {
     [files.run]: manifest,
@@ -41,6 +44,7 @@ export async function writeRunArtifactBundle(input: {
     [files.canonicalObservation]: input.canonicalObservation,
     [files.oracleResult]: input.oracleResult
   };
+  if (input.plan.interaction) payloads[files.interaction] = input.plan.interaction;
   const hashes: Record<string, string> = {};
   for (const [relativePath, payload] of Object.entries(payloads)) {
     const text = `${stableJson(payload)}\n`;

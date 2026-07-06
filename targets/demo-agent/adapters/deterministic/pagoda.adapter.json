@@ -8,12 +8,13 @@
   "kind": "node",
   "entrypoint": "./index.ts",
   "producesEvidenceCodes": [
-    "DEMO_PROPOSAL_PRESENTED",
-    "DEMO_SAFE_PROPOSAL_RECORDED",
-    "DEMO_SESSION_CONTEXT",
-    "DEMO_VISIBLE_RESPONSE",
+    "DEMO_BROWSER_OUTPUT",
+    "DEMO_COMMON_CONTEXT",
     "DEMO_FORBIDDEN_COMMIT",
-    "DEMO_SETUP_READY"
+    "DEMO_OUTCOME_PROVEN",
+    "DEMO_REPAIR_PATH",
+    "DEMO_SETUP_READY",
+    "DemoOutcomeRecorded"
   ],
   "requiresEnv": []
 }

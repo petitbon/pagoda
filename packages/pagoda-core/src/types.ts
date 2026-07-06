@@ -6,6 +6,14 @@ export type {
   PagodaScenario,
   PagodaScenarioStatus
 } from './model/scenario.js';
+export type {
+  PagodaInteractionCoverage,
+  PagodaInteractionSlot,
+  PagodaInteractionSpec,
+  PagodaInteractionTurnTemplate,
+  PagodaInteractionValue,
+  PagodaMaterializedInteraction
+} from './model/interaction.js';
 export type { PagodaOutcomeContract } from './model/outcome-contract.js';
 export type {
   PagodaEvidenceMap,

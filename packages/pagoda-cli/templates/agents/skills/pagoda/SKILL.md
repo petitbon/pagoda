@@ -38,6 +38,7 @@ brew install pagoda
 - Keep `labels.channels`, `channelContracts.channels`, and manifest `channels` consistent.
 - Keep `.pagoda/evidence/registry.json` aligned with scenario and adapter evidence codes.
 - Keep adapter `producesEvidenceCodes` aligned with the required setup, outcome, workflow, common, and channel evidence for scenarios it runs.
+- Use scenario `interaction` for generated user turns when present. Case ids are stable; `--seed` changes default ordering/template choice, not what `case-001` means.
 - Generated run artifacts under `.pagoda/artifacts/` are local output and should not be committed.
 - Do not hand-edit generated outcome contracts, reports, or run artifacts except while debugging generator output. Fix source scenarios, evidence maps, adapters, fixtures, or registries instead.
 
@@ -64,6 +65,7 @@ For each new scenario:
 - Add a channel contract for every supported channel the scenario declares.
 - Run `pagoda adapter check --root .pagoda --adapter <adapter-id> --scenario <scenario-id>` to find missing adapter capabilities.
 - Update the adapter only when it cannot yet emit the required canonical evidence codes.
+- For generated interaction scenarios, use `pagoda run --root .pagoda --scenario <scenario-id> --interaction-case case-001` to reproduce one case or `--interaction-cases all` for pairwise coverage.
 
 ## When Validation Fails
 

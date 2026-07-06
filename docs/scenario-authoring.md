@@ -15,7 +15,40 @@ Each scenario should define:
 - required workflow outcomes;
 - forbidden tools, events, and claims;
 - channel-specific evidence requirements;
-- harness metadata for the target adapter.
+- harness metadata for the target adapter;
+- optional generated interaction input for user turns.
+
+## Interaction
+
+Scenarios may define optional `interaction` intent. When present, Pagoda
+materializes deterministic user turns from templates and slots before handing a
+run to the adapter:
+
+```json
+{
+  "interaction": {
+    "mode": "generated",
+    "slots": {
+      "urgency": { "values": ["standard", "time-sensitive"] },
+      "request": { "values": ["safe proposal", "next step"] }
+    },
+    "turns": [
+      {
+        "id": "request-proposal",
+        "actor": "user",
+        "after": "channel-ready",
+        "templates": ["Please give me a {urgency} {request}."]
+      }
+    ],
+    "coverage": { "strategy": "seeded-pairwise" }
+  }
+}
+```
+
+Case ids such as `case-001` identify stable slot combinations. `--seed`
+controls default selection, all-case ordering, and template choice, but it does
+not change what a case id means. Generated interaction is execution input and
+artifact context; it is not oracle proof.
 
 In a standalone observed repo, prefer one bundle per scenario:
 
@@ -76,8 +109,10 @@ pagoda scenario create --root .pagoda \
   --risk low
 ```
 
-The generator creates the scenario bundle, evidence map, generated outcome
-contract, and evidence-registry entries. Then:
+The generator creates generated interaction by default. Use
+`--interaction none` for a legacy-style scenario without generated user turns.
+It also creates the scenario bundle, evidence map, generated outcome contract,
+and evidence-registry entries. Then:
 
 1. Rename the scenario id and title to the behavior being validated.
 2. Describe the user or system intent.

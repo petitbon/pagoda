@@ -12,6 +12,12 @@ A run writes a directory named:
 <timestamp>_<target>_<scenario>_<channel>/
 ```
 
+Interaction runs append the stable interaction case id:
+
+```text
+<timestamp>_<target>_<scenario>_<channel>_<case-id>/
+```
+
 The parent directory depends on the project-pack mode:
 
 - standalone observed repo: `.pagoda/artifacts/runs/`
@@ -26,6 +32,8 @@ Each run artifact contains:
 - `scenario.json`: scenario source at run time.
 - `evidence-map.json`: evidence map source at run time.
 - `outcome-contract.json`: generated contract used by the oracle.
+- `interaction.json`: materialized interaction, only when the scenario defines
+  generated interaction.
 - `raw-observations.json`: adapter-level raw result metadata.
 - `canonical-observation.json`: normalized evidence observations.
 - `oracle-result.json`: deterministic oracle decision.
@@ -44,7 +52,8 @@ evaluation.
 ## Replay
 
 Replay reads the saved outcome contract and canonical observation, reruns the
-oracle, and compares the replayed result with `oracle-result.json`.
+oracle with the original interaction case id when present, and compares the
+replayed result with `oracle-result.json`.
 
 ```bash
 pagoda replay --artifact .pagoda/artifacts/runs/<run-dir>

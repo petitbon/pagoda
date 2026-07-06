@@ -11,7 +11,7 @@ export async function replayArtifact(context: PagodaRootContext, artifactPath: s
   const replayed = evaluatePagodaOutcomeContract({
     contract: bundle.contract,
     channel: bundle.manifest.channel as never,
-    caseId: bundle.manifest.scenarioId,
+    caseId: bundle.manifest.interactionCaseId ?? bundle.contract.harness.selectedCase ?? bundle.manifest.scenarioId,
     observations: bundle.canonicalObservation
   });
   const matches = stableJson(replayed) === stableJson(bundle.oracleResult);

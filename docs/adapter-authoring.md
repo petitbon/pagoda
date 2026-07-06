@@ -84,11 +84,18 @@ The run plan passed to the adapter includes:
 - `run.targetRoot`: the `.pagoda/` directory.
 - `run.scenario`: the canonical scenario being executed.
 - `run.channel`: the selected interaction channel.
+- `run.interaction`: optional materialized generated user turns for this run.
 
 Use those paths to launch product code, call local services, read logs, inspect
 state, or collect traces. Return one canonical observation object from
 `collectObservations`; the oracle evaluates that observation against the
 generated outcome contract.
+
+When `run.interaction` exists, adapters should drive the target channel with
+`run.interaction.turns` rather than inventing prompts from harness metadata.
+Adapters still own channel mechanics such as waiting for readiness, sending
+browser-chat messages, placing phone calls, collecting platform evidence, and
+normalizing that evidence. Interaction text alone does not prove PASS.
 
 ## Canonical Observation
 

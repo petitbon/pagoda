@@ -27,5 +27,6 @@ export const projectScenarioToOutcomeContract = (
   channelContracts: scenario.channelContracts,
   trace: evidenceMap.traceContract,
   forbiddenSideEffects: scenario.forbiddenSideEffects,
-  harness: scenario.harness
+  harness: scenario.harness,
+  interaction: scenario.interaction
 });

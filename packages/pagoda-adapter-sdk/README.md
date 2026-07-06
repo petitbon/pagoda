@@ -38,6 +38,8 @@ yarn workspace @petitbon/pagoda-adapter-sdk test
 
 Adapters translate ordinary platform APIs, logs, traces, events, and facts into
 canonical Pagoda evidence observations. Target platforms remain Pagoda-agnostic.
+When a run plan includes `run.interaction`, adapters use those materialized
+turns to drive the target channel and still return trusted canonical evidence.
 
 ## Standalone Adapters
 

@@ -100,9 +100,47 @@
     "scenario": "pass",
     "selectedCase": "DEMO-PROPOSAL-PRESENTED-001.case"
   },
+  "interaction": {
+    "mode": "generated",
+    "persona": {
+      "id": "demo-user",
+      "traits": [
+        "goal-oriented",
+        "explicit"
+      ]
+    },
+    "slots": {
+      "request": {
+        "values": [
+          "safe proposal",
+          "next step"
+        ]
+      },
+      "urgency": {
+        "values": [
+          "standard",
+          "time-sensitive"
+        ]
+      }
+    },
+    "turns": [
+      {
+        "id": "request-proposal",
+        "actor": "user",
+        "templates": [
+          "Please give me a {urgency} {request} without committing the action.",
+          "I need a {urgency} {request}; do not commit anything yet."
+        ],
+        "after": "channel-ready"
+      }
+    ],
+    "coverage": {
+      "strategy": "seeded-pairwise"
+    }
+  },
   "generatedFrom": {
-    "scenarioHash": "sha256:40500ccdd030bcf435da08bbb6af560aae729c0e2af7d3dd41019e752d4e2f96",
+    "scenarioHash": "sha256:ef697543a5519a20a147318d2158d3dba69c5aca331843b8943ca370b42ffebd",
     "evidenceMapHash": "sha256:e7660667994943a9b489ad136ec67a7a3253e7b48c2ae7d25f5087f857565d8c",
-    "pagodaCoreVersion": "0.1.0"
+    "pagodaCoreVersion": "0.2.0"
   }
 }

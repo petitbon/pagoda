@@ -38,6 +38,8 @@ yarn workspace @petitbon/pagoda-runner test
 - file hashing for reproducibility.
 
 The runner depends on target behavior only through `@petitbon/pagoda-adapter-sdk`.
+When a run plan includes materialized interaction, the runner persists
+`interaction.json`, records `interactionCaseId`, and includes it in reports.
 
 ## Artifact Roots
 

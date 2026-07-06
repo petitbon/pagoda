@@ -1,5 +1,6 @@
 import type {
   PagodaEvidenceMap,
+  PagodaMaterializedInteraction,
   PagodaOutcomeContract,
   PagodaScenario
 } from '@petitbon/pagoda-core';
@@ -15,6 +16,7 @@ export type PagodaRunPlan = {
   contract: PagodaOutcomeContract;
   channel: string;
   seed?: string;
+  interaction?: PagodaMaterializedInteraction;
 };
 
 export type PreparedRun = {

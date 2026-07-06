@@ -1,5 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import type { PagodaEvidenceMap, PagodaOutcomeContract, PagodaScenario } from '@petitbon/pagoda-core';
+import type {
+  PagodaEvidenceMap,
+  PagodaMaterializedInteraction,
+  PagodaOutcomeContract,
+  PagodaScenario
+} from '@petitbon/pagoda-core';
 import type { PagodaRunPlan } from '@petitbon/pagoda-adapter-sdk';
 
 export type PagodaRunnerEvent =
@@ -17,6 +22,7 @@ export function createPagodaRunPlan(input: {
   contract: PagodaOutcomeContract;
   channel: string;
   seed?: string;
+  interaction?: PagodaMaterializedInteraction;
 }): PagodaRunPlan {
   return {
     runId: `pagoda-run:${randomUUID()}`,
@@ -28,6 +34,7 @@ export function createPagodaRunPlan(input: {
     evidenceMap: input.evidenceMap,
     contract: input.contract,
     channel: input.channel,
-    seed: input.seed
+    seed: input.seed,
+    interaction: input.interaction
   };
 }

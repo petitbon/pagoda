@@ -62,6 +62,8 @@ export async function main(args = process.argv.slice(2), io: PagodaCliIo = conso
       adapterId: argValue(args, '--adapter'),
       channel: argValue(args, '--channel'),
       seed: argValue(args, '--seed'),
+      interactionCase: argValue(args, '--interaction-case'),
+      interactionCases: argValue(args, '--interaction-cases'),
       artifactDirectory: argValue(args, '--artifact-directory'),
       reporter: runReporter(args),
       io

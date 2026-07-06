@@ -182,6 +182,7 @@ describe('@petitbon/pagoda-cli', () => {
       await expect(readFile(join(root, 'adapters/sample-agent-local/index.mjs'), 'utf8')).resolves.toContain("targetId: 'sample-agent'");
       await expect(readFile(join(root, 'adapters/sample-agent-local/pagoda.adapter.json'), 'utf8')).resolves.toContain('"schemaVersion": "pagoda.adapter"');
       await expect(readFile(join(root, 'scenarios/sample-agent-safe-proposal-001/scenario.json'), 'utf8')).resolves.toContain('"id": "SAMPLE-AGENT-SAFE-PROPOSAL-001"');
+      await expect(readFile(join(root, 'scenarios/sample-agent-safe-proposal-001/scenario.json'), 'utf8')).resolves.toContain('"interaction"');
       await expect(readFile(join(root, 'scenarios/sample-agent-safe-proposal-001/evidence-map.json'), 'utf8')).resolves.toContain('"scenarioId": "SAMPLE-AGENT-SAFE-PROPOSAL-001"');
       const skillText = await readFile(join(projectRoot, '.agents', 'skills', 'pagoda', 'SKILL.md'), 'utf8');
       const templateSkillText = await readFile(fileURLToPath(new URL('../templates/agents/skills/pagoda/SKILL.md', import.meta.url)), 'utf8');
@@ -257,9 +258,11 @@ describe('@petitbon/pagoda-cli', () => {
       const runLogs = await captureLogs(async () => {
         await main(['run', '--root', root, '--scenario', 'SAMPLE-AGENT-SAFE-PROPOSAL-001', '--channel', 'browser-chat', '--reporter', 'json']);
       });
-      const run = JSON.parse(runLogs.join('\n')) as { artifactDirectory: string; oracle: { status: string } };
+      const run = JSON.parse(runLogs.join('\n')) as { artifactDirectory: string; interactionCaseId?: string; oracle: { status: string } };
       expect(run.oracle.status).toBe('PASS');
+      expect(run.interactionCaseId).toMatch(/^case-\d{3}$/);
       expect(run.artifactDirectory).toContain(join(root, 'artifacts/runs'));
+      await expect(readFile(join(run.artifactDirectory, 'interaction.json'), 'utf8')).resolves.toContain(run.interactionCaseId as string);
 
       const replayLogs = await captureLogs(async () => {
         await main(['replay', '--root', root, '--artifact', run.artifactDirectory]);
@@ -500,7 +503,9 @@ describe('@petitbon/pagoda-cli', () => {
         evidenceRegistry: 'evidence/registry.json'
       });
       await expect(readFile(join(root, 'scenarios/sample-agent-location-answer-001/scenario.json'), 'utf8')).resolves.toContain('SAMPLE-AGENT_LOCATION_ANSWER_PROVEN');
+      await expect(readFile(join(root, 'scenarios/sample-agent-location-answer-001/scenario.json'), 'utf8')).resolves.toContain('"interaction"');
       await expect(readFile(join(root, 'contracts/SAMPLE-AGENT-LOCATION-ANSWER-001.outcome-contract.json'), 'utf8')).resolves.toContain('SAMPLE-AGENT_LOCATION_ANSWER_PROVEN');
+      await expect(readFile(join(root, 'contracts/SAMPLE-AGENT-LOCATION-ANSWER-001.outcome-contract.json'), 'utf8')).resolves.toContain('"interaction"');
       await expect(readFile(join(root, 'contracts/SAMPLE-AGENT-LOCATION-ANSWER-001.outcome-contract.json'), 'utf8')).resolves.toMatch(/"pagodaCoreVersion": "\d+\.\d+\.\d+"/);
       await expect(readFile(join(root, 'evidence/registry.json'), 'utf8')).resolves.toContain('SAMPLE-AGENT_LOCATION_ANSWER_PROVEN');
 
@@ -531,6 +536,65 @@ describe('@petitbon/pagoda-cli', () => {
         status: 'ready',
         missingEvidenceCodes: []
       });
+    });
+  });
+
+  it('can create legacy-style scenarios without generated interaction', async () => {
+    await withTempDir(async (directory) => {
+      const root = join(directory, 'sample-agent', '.pagoda');
+      await captureLogs(async () => {
+        await main(['init', '--root', root]);
+      });
+
+      await captureLogs(async () => {
+        await main([
+          'scenario',
+          'create',
+          '--root',
+          root,
+          '--id',
+          'SAMPLE-AGENT-LEGACY-001',
+          '--title',
+          'Legacy scenario',
+          '--channel',
+          'browser-chat',
+          '--interaction',
+          'none'
+        ]);
+      });
+      const scenarioText = await readFile(join(root, 'scenarios/sample-agent-legacy-001/scenario.json'), 'utf8');
+      expect(scenarioText).not.toContain('"interaction"');
+      await expect(captureLogs(async () => {
+        await main(['run', '--root', root, '--scenario', 'SAMPLE-AGENT-LEGACY-001', '--interaction-case', 'case-001', '--reporter', 'json']);
+      })).rejects.toThrow(/has no interaction/);
+    });
+  });
+
+  it('runs all generated interaction cases and selects stable case ids', async () => {
+    await withTempDir(async (directory) => {
+      const root = join(directory, 'sample-agent', '.pagoda');
+      await captureLogs(async () => {
+        await main(['init', '--root', root]);
+      });
+
+      const allLogs = await captureLogs(async () => {
+        await main(['run', '--root', root, '--scenario', 'SAMPLE-AGENT-SAFE-PROPOSAL-001', '--interaction-cases', 'all', '--reporter', 'json']);
+      });
+      const summary = JSON.parse(allLogs.join('\n')) as {
+        total: number;
+        runs: Array<{ interactionCaseId?: string; artifactDirectory: string; oracle: { status: string } }>;
+      };
+      expect(summary.total).toBeGreaterThan(1);
+      expect(new Set(summary.runs.map((run) => run.interactionCaseId)).size).toBe(summary.total);
+      expect(summary.runs.every((run) => run.oracle.status === 'PASS')).toBe(true);
+      expect(summary.runs.every((run) => run.artifactDirectory.includes(run.interactionCaseId as string))).toBe(true);
+
+      const selectedLogs = await captureLogs(async () => {
+        await main(['run', '--root', root, '--scenario', 'SAMPLE-AGENT-SAFE-PROPOSAL-001', '--interaction-case', 'case-001', '--seed', 'fixed', '--reporter', 'json']);
+      });
+      const selected = JSON.parse(selectedLogs.join('\n')) as { interactionCaseId?: string; oracle: { status: string } };
+      expect(selected.interactionCaseId).toBe('case-001');
+      expect(selected.oracle.status).toBe('PASS');
     });
   });
 

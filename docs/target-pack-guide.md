@@ -128,6 +128,11 @@ The starter adapter is a package-free `.mjs` file. Replace its deterministic
 observation with calls to the observed platform, logs, traces, APIs, or state
 stores.
 
+Generated starter scenarios include optional deterministic interaction input.
+Run one seeded case by default, a specific stable case with
+`--interaction-case case-001`, or every pairwise-generated case with
+`--interaction-cases all`.
+
 ## Bundles
 
 Scenario bundles own test intent and proof requirements:

@@ -37,7 +37,9 @@ const adapter = {
       metadata: {
         projectRoot: run.projectRoot,
         scenarioId: run.scenario.id,
-        channel: run.channel
+        channel: run.channel,
+        interactionCaseId: run.interaction?.caseId,
+        interactionTurns: run.interaction?.turns
       }
     };
   },
@@ -48,11 +50,12 @@ const adapter = {
     return {
       runId: prepared.runId,
       status: run ? 'completed' : 'failed',
-      stdout: run ? \`${targetId} completed \${run.scenario.id}\` : '',
+      stdout: run ? \`${targetId} completed \${run.scenario.id}\${run.interaction ? \` \${run.interaction.caseId}\` : ''}\` : '',
       stderr: run ? '' : 'prepared run was not found',
       exitCode: run ? 0 : 1,
       metadata: {
-        scenarioId: run?.scenario.id
+        scenarioId: run?.scenario.id,
+        interaction: run?.interaction
       }
     };
   },
@@ -133,7 +136,9 @@ const adapter = {
       metadata: {
         projectRoot: run.projectRoot,
         scenarioId: run.scenario.id,
-        channel: run.channel
+        channel: run.channel,
+        interactionCaseId: run.interaction?.caseId,
+        interactionTurns: run.interaction?.turns
       }
     };
   },
@@ -143,11 +148,12 @@ const adapter = {
     return {
       runId: prepared.runId,
       status: run ? 'completed' : 'failed',
-      stdout: run ? \`${targetId} completed \${run.scenario.id}\` : '',
+      stdout: run ? \`${targetId} completed \${run.scenario.id}\${run.interaction ? \` \${run.interaction.caseId}\` : ''}\` : '',
       stderr: run ? '' : 'prepared run was not found',
       exitCode: run ? 0 : 1,
       metadata: {
-        scenarioId: run?.scenario.id
+        scenarioId: run?.scenario.id,
+        interaction: run?.interaction
       }
     };
   },

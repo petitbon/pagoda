@@ -1,7 +1,15 @@
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { evaluatePagodaOutcomeContract, type PagodaEvidenceMap, type PagodaOutcomeContract, type PagodaScenario } from '@petitbon/pagoda-core';
+import {
+  evaluatePagodaOutcomeContract,
+  listPagodaInteractionCases,
+  materializePagodaInteraction,
+  type PagodaEvidenceMap,
+  type PagodaMaterializedInteraction,
+  type PagodaOutcomeContract,
+  type PagodaScenario
+} from '@petitbon/pagoda-core';
 import type { PagodaTargetAdapter, PagodaTargetManifest } from '@petitbon/pagoda-adapter-sdk';
 import {
   buildRunArtifactDirectory,
@@ -27,6 +35,8 @@ export async function runTargetScenario(input: {
   adapterId: string | undefined;
   channel: string | undefined;
   seed: string | undefined;
+  interactionCase: string | undefined;
+  interactionCases: string | undefined;
   artifactDirectory: string | undefined;
   reporter: PagodaCliReporter;
   io: PagodaCliIo;
@@ -35,12 +45,40 @@ export async function runTargetScenario(input: {
   const runAll = input.all || !scenarioId;
   if (input.all && scenarioId) throw new Error('pagoda run accepts either --all or --scenario <id>, not both.');
   if (runAll && input.artifactDirectory) throw new Error('pagoda run does not accept --artifact-directory when running all scenarios; each scenario writes its own artifact directory.');
+  if (input.interactionCase && input.interactionCases) throw new Error('pagoda run accepts either --interaction-case or --interaction-cases, not both.');
+  if (input.interactionCases !== undefined && input.interactionCases !== 'all') {
+    throw new Error('pagoda run --interaction-cases only accepts all.');
+  }
   const { root, manifest } = await loadTargetManifest(context);
   const scenarios = await loadScenarios(root, manifest);
   const maps = await loadEvidenceMaps(root, manifest);
   const contracts = await loadContracts(root, manifest);
 
-  const runOne = async (selectedScenarioId: string, selectedChannel: string) => {
+  const interactionJobsFor = (scenario: PagodaScenario, selectedChannel: string): Array<PagodaMaterializedInteraction | undefined> => {
+    if (!scenario.interaction) {
+      if (input.interactionCase) {
+        throw new Error(`${context.targetId}: scenario ${scenario.id} has no interaction; --interaction-case cannot be used.`);
+      }
+      return [undefined];
+    }
+    if (input.interactionCases === 'all') {
+      return listPagodaInteractionCases({
+        scenarioId: scenario.id,
+        channel: selectedChannel,
+        seed: input.seed,
+        interaction: scenario.interaction
+      });
+    }
+    return [materializePagodaInteraction({
+      scenarioId: scenario.id,
+      channel: selectedChannel,
+      seed: input.seed,
+      interaction: scenario.interaction,
+      caseSelector: input.interactionCase
+    })];
+  };
+
+  const runOne = async (selectedScenarioId: string, selectedChannel: string, interaction: PagodaMaterializedInteraction | undefined) => {
     const scenario = scenarios.find((entry) => entry.scenario.id === selectedScenarioId)?.scenario;
     if (!scenario) throw new Error(`${context.targetId}: scenario ${selectedScenarioId} does not exist.`);
     const evidenceMap = maps.find((entry) => entry.evidenceMap.scenarioId === selectedScenarioId)?.evidenceMap;
@@ -77,6 +115,7 @@ export async function runTargetScenario(input: {
       contract,
       selectedChannel,
       seed: input.seed,
+      interaction,
       artifactDirectory: input.artifactDirectory
     });
   };
@@ -92,7 +131,8 @@ export async function runTargetScenario(input: {
         const selectedChannels = channel ? [channel] : entry.labels.channels;
         return selectedChannels
           .filter((selectedChannel) => entry.labels.channels.includes(selectedChannel as never))
-          .map((selectedChannel) => ({ scenarioId: entry.id, channel: selectedChannel }));
+          .flatMap((selectedChannel) => interactionJobsFor(entry, selectedChannel)
+            .map((interaction) => ({ scenarioId: entry.id, channel: selectedChannel, interaction })));
       });
     if (runnableJobs.length === 0) {
       throw new Error(`${context.targetId}: no active scenarios${channel ? ` declare channel ${channel}` : ''}.`);
@@ -102,7 +142,7 @@ export async function runTargetScenario(input: {
       input.io.stdout(formatRunSummaryHeader({ projectId: context.targetId, channel: channel ?? null }, context));
     }
     for (const job of runnableJobs) {
-      const run = await runOne(job.scenarioId, job.channel);
+      const run = await runOne(job.scenarioId, job.channel, job.interaction);
       runs.push(run);
       if (input.reporter !== 'json') input.io.stdout(formatRunProgress(run, context));
     }
@@ -127,11 +167,19 @@ export async function runTargetScenario(input: {
   if (!scenario) throw new Error(`${context.targetId}: scenario ${scenarioId} does not exist.`);
   const selectedChannels = channel ? [channel] : scenario.labels.channels;
   if (selectedChannels.length === 0) throw new Error(`${context.targetId}: scenario ${scenarioId} declares no channel.`);
-  if (input.artifactDirectory && selectedChannels.length > 1) {
-    throw new Error(`${context.targetId}: --artifact-directory requires --channel when scenario ${scenarioId} declares multiple channels.`);
+  const runnableJobs = selectedChannels
+    .filter((selectedChannel) => scenario.labels.channels.includes(selectedChannel as never))
+    .flatMap((selectedChannel) => interactionJobsFor(scenario, selectedChannel)
+      .map((interaction) => ({ scenarioId: scenarioId as string, channel: selectedChannel, interaction })));
+  if (runnableJobs.length === 0) {
+    throw new Error(`${context.targetId}: scenario ${scenarioId} does not declare channel ${selectedChannels.join(', ')}.`);
   }
-  if (selectedChannels.length === 1) {
-    const run = await runOne(scenarioId as string, selectedChannels[0] as string);
+  if (input.artifactDirectory && runnableJobs.length > 1) {
+    throw new Error(`${context.targetId}: --artifact-directory requires a single scenario/channel/interaction case run.`);
+  }
+  if (runnableJobs.length === 1) {
+    const job = runnableJobs[0];
+    const run = await runOne(job.scenarioId, job.channel, job.interaction);
     input.io.stdout(input.reporter === 'json' ? JSON.stringify(run, null, 2) : formatRunResult(run, context));
     return { exitCode: run.oracle.status === 'PASS' ? 0 : 1 };
   }
@@ -142,8 +190,8 @@ export async function runTargetScenario(input: {
   if (input.reporter !== 'json') {
     input.io.stdout(formatRunSummaryHeader({ projectId: context.targetId, channel: null }, context));
   }
-  for (const selectedChannel of selectedChannels) {
-    const run = await runOne(scenarioId as string, selectedChannel);
+  for (const job of runnableJobs) {
+    const run = await runOne(job.scenarioId, job.channel, job.interaction);
     runs.push(run);
     if (input.reporter !== 'json') input.io.stdout(formatRunProgress(run, context));
   }
@@ -174,6 +222,7 @@ async function runLoadedTargetScenario(input: {
   contract: PagodaOutcomeContract;
   selectedChannel: string;
   seed: string | undefined;
+  interaction: PagodaMaterializedInteraction | undefined;
   artifactDirectory: string | undefined;
 }): Promise<PagodaRunCliResult> {
   const { context, root, manifest, adapter, scenario, evidenceMap, contract, selectedChannel } = input;
@@ -185,7 +234,14 @@ async function runLoadedTargetScenario(input: {
     : join(context.projectRoot, 'artifacts');
   const artifactDirectory = input.artifactDirectory
     ? resolve(context.projectRoot, input.artifactDirectory)
-    : buildRunArtifactDirectory({ artifactRoot, startedAt, targetId: context.targetId, scenarioId, channel: selectedChannel });
+    : buildRunArtifactDirectory({
+        artifactRoot,
+        startedAt,
+        targetId: context.targetId,
+        scenarioId,
+        channel: selectedChannel,
+        interactionCaseId: input.interaction?.caseId
+      });
   const plan = createPagodaRunPlan({
     targetId: context.targetId,
     projectRoot: context.projectRoot,
@@ -195,7 +251,8 @@ async function runLoadedTargetScenario(input: {
     evidenceMap,
     contract,
     channel: selectedChannel,
-    seed: input.seed
+    seed: input.interaction?.seed ?? input.seed,
+    interaction: input.interaction
   });
   const prepared = await adapter.prepare(plan);
   try {
@@ -204,7 +261,7 @@ async function runLoadedTargetScenario(input: {
     const evaluation = evaluatePagodaOutcomeContract({
       contract,
       channel: selectedChannel as never,
-      caseId: scenario.harness.selectedCase ?? scenario.id,
+      caseId: plan.interaction?.caseId ?? scenario.harness.selectedCase ?? scenario.id,
       observations
     });
     const rawObservations = result.reportFile && existsSync(result.reportFile)
@@ -236,6 +293,7 @@ async function runLoadedTargetScenario(input: {
       projectId: context.targetId,
       scenarioId,
       channel: selectedChannel,
+      interactionCaseId: plan.interaction?.caseId,
       adapterRunStatus: result.status,
       evidence: {
         accepted: observations.acceptedEvidenceCodes.length,

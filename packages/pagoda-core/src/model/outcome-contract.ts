@@ -24,4 +24,5 @@ export type PagodaOutcomeContract = {
   trace: PagodaTraceContract;
   forbiddenSideEffects: PagodaScenario['forbiddenSideEffects'];
   harness: PagodaScenario['harness'];
+  interaction?: PagodaScenario['interaction'];
 };

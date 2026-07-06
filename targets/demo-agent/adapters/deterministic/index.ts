@@ -82,7 +82,8 @@ export const pagodaTargetAdapter: PagodaTargetAdapter = {
       artifactDirectory: run.artifactDirectory,
       metadata: {
         scenarioId: run.scenario.id,
-        channel: run.channel
+        channel: run.channel,
+        interaction: run.interaction
       }
     };
   },
@@ -92,11 +93,12 @@ export const pagodaTargetAdapter: PagodaTargetAdapter = {
     return {
       runId: prepared.runId,
       status: run ? 'completed' : 'failed',
-      stdout: run ? `demo-agent completed ${run.scenario.id}` : '',
+      stdout: run ? `demo-agent completed ${run.scenario.id}${run.interaction ? ` ${run.interaction.caseId} ${run.interaction.turns.map((turn) => turn.text).join(' ')}` : ''}` : '',
       stderr: run ? '' : 'prepared run was not found',
       exitCode: run ? 0 : 1,
       metadata: {
-        scenarioId: run?.scenario.id
+        scenarioId: run?.scenario.id,
+        interaction: run?.interaction
       }
     };
   },

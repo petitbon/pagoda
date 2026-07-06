@@ -1,4 +1,5 @@
 import type {
+  PagodaInteractionSpec,
   PagodaChannel,
   PagodaEvidenceMap,
   PagodaEvidenceMapEdgeType,
@@ -139,6 +140,105 @@ const validateChannelContracts = (errors: string[], scenario: Partial<PagodaScen
   return texts;
 };
 
+const slotTokenPattern = /\{([A-Za-z0-9_-]+)\}/g;
+
+const validateInteraction = (errors: string[], value: unknown): string[] => {
+  const texts: string[] = [];
+  if (value === undefined) return texts;
+  const interaction = value as Partial<PagodaInteractionSpec>;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    errors.push('interaction must be an object');
+    return texts;
+  }
+  if (interaction.mode !== 'generated') errors.push('interaction.mode must be generated');
+
+  if (interaction.persona !== undefined) {
+    if (!interaction.persona || typeof interaction.persona !== 'object' || Array.isArray(interaction.persona)) {
+      errors.push('interaction.persona must be an object');
+    } else {
+      requiredString(errors, 'interaction.persona.id', interaction.persona.id);
+      texts.push(interaction.persona.id ?? '', ...optionalStringArray(errors, 'interaction.persona.traits', interaction.persona.traits));
+    }
+  }
+
+  const slots = interaction.slots ?? {};
+  if (!slots || typeof slots !== 'object' || Array.isArray(slots)) {
+    errors.push('interaction.slots must be an object');
+  }
+  const slotNames = new Set<string>();
+  if (slots && typeof slots === 'object' && !Array.isArray(slots)) {
+    for (const [slotName, slot] of Object.entries(slots)) {
+      if (!slotName.trim()) errors.push('interaction.slots keys must be non-empty strings');
+      slotNames.add(slotName);
+      if (!slot || typeof slot !== 'object' || Array.isArray(slot)) {
+        errors.push(`interaction.slots.${slotName} must be an object`);
+        continue;
+      }
+      if (!Array.isArray(slot.values) || slot.values.length === 0) {
+        errors.push(`interaction.slots.${slotName}.values must be a non-empty array`);
+        continue;
+      }
+      for (const [index, slotValue] of slot.values.entries()) {
+        if (!['string', 'number', 'boolean'].includes(typeof slotValue) && slotValue !== null) {
+          errors.push(`interaction.slots.${slotName}.values[${index}] must be a string, number, boolean, or null`);
+        }
+        if (typeof slotValue === 'string') texts.push(slotValue);
+      }
+    }
+  }
+
+  if (!Array.isArray(interaction.turns) || interaction.turns.length === 0) {
+    errors.push('interaction.turns must be a non-empty array');
+  }
+  const turnIds = new Set<string>();
+  for (const [index, turn] of (interaction.turns ?? []).entries()) {
+    if (!turn || typeof turn !== 'object' || Array.isArray(turn)) {
+      errors.push(`interaction.turns[${index}] must be an object`);
+      continue;
+    }
+    requiredString(errors, `interaction.turns[${index}].id`, turn.id);
+    if (typeof turn.id === 'string') {
+      if (turnIds.has(turn.id)) errors.push(`interaction.turns[${index}].id duplicates ${turn.id}`);
+      turnIds.add(turn.id);
+    }
+    if (turn.actor !== 'user') errors.push(`interaction.turns[${index}].actor must be user`);
+    if (turn.after !== undefined && turn.after !== 'channel-ready' && turn.after !== 'assistant-response') {
+      errors.push(`interaction.turns[${index}].after must be channel-ready or assistant-response`);
+    }
+    if (turn.delayMs !== undefined && (!Number.isInteger(turn.delayMs) || turn.delayMs < 0)) {
+      errors.push(`interaction.turns[${index}].delayMs must be a non-negative integer`);
+    }
+    if (!Array.isArray(turn.templates) || turn.templates.length === 0 || turn.templates.some((template) => typeof template !== 'string' || template.trim().length === 0)) {
+      errors.push(`interaction.turns[${index}].templates must be a non-empty string array`);
+      continue;
+    }
+    texts.push(...turn.templates);
+    for (const template of turn.templates) {
+      for (const match of template.matchAll(slotTokenPattern)) {
+        const slotName = match[1];
+        if (!slotNames.has(slotName)) {
+          errors.push(`interaction.turns[${index}].templates references undeclared slot ${slotName}`);
+        }
+      }
+    }
+  }
+
+  if (interaction.coverage !== undefined) {
+    if (!interaction.coverage || typeof interaction.coverage !== 'object' || Array.isArray(interaction.coverage)) {
+      errors.push('interaction.coverage must be an object');
+    } else {
+      if (interaction.coverage.strategy !== 'seeded-pairwise') {
+        errors.push('interaction.coverage.strategy must be seeded-pairwise');
+      }
+      if (interaction.coverage.maxCases !== undefined && (!Number.isInteger(interaction.coverage.maxCases) || interaction.coverage.maxCases <= 0)) {
+        errors.push('interaction.coverage.maxCases must be a positive integer');
+      }
+    }
+  }
+
+  return texts;
+};
+
 export function validatePagodaScenario(value: unknown): PagodaScenarioValidationResult {
   const scenario = value as Partial<PagodaScenario>;
   const scenarioId = typeof scenario.id === 'string' ? scenario.id : '<unknown>';
@@ -185,6 +285,7 @@ export function validatePagodaScenario(value: unknown): PagodaScenarioValidation
 
   requiredString(errors, 'harness.suite', scenario.harness?.suite);
   requiredString(errors, 'harness.scenario', scenario.harness?.scenario);
+  const interactionTexts = validateInteraction(errors, scenario.interaction);
 
   rejectRetiredReferences(errors, 'scenario text', [
     scenario.id ?? '',
@@ -209,7 +310,8 @@ export function validatePagodaScenario(value: unknown): PagodaScenarioValidation
     ...forbiddenToolNames,
     ...forbiddenEvents,
     ...forbiddenClaims,
-    ...channelContractTexts
+    ...channelContractTexts,
+    ...interactionTexts
   ]);
 
   return { scenarioId, errors };

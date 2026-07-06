@@ -29,10 +29,14 @@ export async function createScenarioBundle(context: PagodaRootContext, args: rea
   const outcome = argValue(args, '--outcome', scenarioIdSlug(scenarioId).replace(/-\d{3}$/, '')) ?? scenarioIdSlug(scenarioId).replace(/-\d{3}$/, '');
   const domain = argValue(args, '--domain', 'product') ?? 'product';
   const risk = argValue(args, '--risk', 'medium') ?? 'medium';
+  const interaction = argValue(args, '--interaction', 'generated') ?? 'generated';
+  if (interaction !== 'none' && interaction !== 'generated') {
+    throw new Error('pagoda scenario create --interaction must be none or generated.');
+  }
   const existingScenarios = await loadScenarios(root, manifest);
   if (existingScenarios.some((entry) => entry.scenario.id === scenarioId)) throw new Error(`${context.targetId}: scenario ${scenarioId} already exists.`);
 
-  const scenario = scenarioFromInput({ targetId: context.targetId, scenarioId, title, channel, outcome, domain, risk });
+  const scenario = scenarioFromInput({ targetId: context.targetId, scenarioId, title, channel, outcome, domain, risk, interaction });
   const evidenceMap = genericEvidenceMap(context.targetId, scenario);
   assertValidPagodaScenarios([scenario]);
   assertValidPagodaEvidenceMaps([evidenceMap], [scenario]);

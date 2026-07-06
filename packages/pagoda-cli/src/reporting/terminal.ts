@@ -41,8 +41,9 @@ const formatRunLine = (run: PagodaRunCliResult, context: PagodaRootContext): str
   const clauses = countClauses(run);
   const artifact = relative(context.projectRoot, run.artifactDirectory);
   const clauseWord = clauses.total === 1 ? 'clause' : 'clauses';
+  const caseText = run.interactionCaseId ? ` ${gray(run.interactionCaseId)}` : '';
   return [
-    ` ${statusMarker(run.oracle.status)} ${run.scenarioId}`,
+    ` ${statusMarker(run.oracle.status)} ${run.scenarioId}${caseText}`,
     `(${clauses.passed}/${clauses.total} ${clauseWord}, ${run.evidence.accepted} accepted evidence)`,
     formatDuration(run.durationMs),
     gray(`adapter ${run.adapterRunStatus}`),
@@ -56,6 +57,7 @@ const formatRunDetails = (run: PagodaRunCliResult): string[] => {
   const failedClauses = run.oracle.clauses.filter((clause) => clause.status === 'FAILED');
   return [
     ...run.oracle.classificationReasons.map((reason) => `  Reason: ${reason}`),
+    run.interactionCaseId ? `  Interaction case: ${run.interactionCaseId}` : null,
     ...missingClauses.map((clause) => `  MISSING: ${clause.clause}`),
     ...failedClauses.map((clause) => {
       const refs = clause.evidenceRefs.length > 0 ? ` (${clause.evidenceRefs.join(', ')})` : '';

@@ -7,6 +7,7 @@ export type PagodaRunArtifactManifest = {
   scenarioId: string;
   channel: string;
   seed?: string;
+  interactionCaseId?: string;
   status: PagodaEvidenceScenarioStatus;
   startedAt: string;
   completedAt: string;
@@ -19,6 +20,7 @@ export const runArtifactFiles = {
   scenario: 'scenario.json',
   evidenceMap: 'evidence-map.json',
   outcomeContract: 'outcome-contract.json',
+  interaction: 'interaction.json',
   rawObservations: 'raw-observations.json',
   canonicalObservation: 'canonical-observation.json',
   oracleResult: 'oracle-result.json',

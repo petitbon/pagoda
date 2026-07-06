@@ -1,4 +1,5 @@
 import type { PagodaTraceSource } from './trace.js';
+import type { PagodaInteractionSpec } from './interaction.js';
 
 export type PagodaScenarioStatus = 'draft' | 'active' | 'retired';
 
@@ -56,4 +57,5 @@ export type PagodaScenario = {
     scenario: string;
     selectedCase?: string;
   };
+  interaction?: PagodaInteractionSpec;
 };

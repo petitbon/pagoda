@@ -9,15 +9,22 @@ export function renderRunReport(input: {
     .map((clause) => `- ${clause.status} ${clause.clause}${clause.evidenceRefs.length > 0 ? ` (${clause.evidenceRefs.join(', ')})` : ''}`)
     .join('\n');
   const reasons = input.oracleResult.classificationReasons.map((reason) => `- ${reason}`).join('\n');
+  const interactionLine = input.manifest.interactionCaseId
+    ? `- Interaction Case: ${input.manifest.interactionCaseId}`
+    : '';
+  const header = [
+    `- Run: ${input.manifest.runId}`,
+    `- Target: ${input.manifest.targetId}`,
+    `- Scenario: ${input.manifest.scenarioId}`,
+    `- Channel: ${input.manifest.channel}`,
+    interactionLine || null,
+    `- Status: ${input.manifest.status}`,
+    `- Started: ${input.manifest.startedAt}`,
+    `- Completed: ${input.manifest.completedAt}`
+  ].filter((line): line is string => line !== null).join('\n');
   return `# Pagoda Run Report
 
-- Run: ${input.manifest.runId}
-- Target: ${input.manifest.targetId}
-- Scenario: ${input.manifest.scenarioId}
-- Channel: ${input.manifest.channel}
-- Status: ${input.manifest.status}
-- Started: ${input.manifest.startedAt}
-- Completed: ${input.manifest.completedAt}
+${header}
 
 ## Classification Reasons
 

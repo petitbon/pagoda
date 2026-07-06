@@ -47,6 +47,7 @@ pagoda init --channel phone
 pagoda update
 pagoda codex install --root .pagoda
 pagoda scenario create --root .pagoda --id PRODUCT-AGENT-LOCATION-ANSWER-001 --title "Location answer" --channel browser-chat
+pagoda scenario create --root .pagoda --id PRODUCT-AGENT-LEGACY-001 --title "Legacy" --interaction none
 pagoda adapter create --root .pagoda --id product-agent-experimental --channel browser-chat
 pagoda validate
 pagoda compile
@@ -54,6 +55,8 @@ pagoda check
 pagoda adapter list
 pagoda adapter check --adapter deterministic --scenario DEMO-PROPOSAL-PRESENTED-001
 pagoda run --scenario DEMO-PROPOSAL-PRESENTED-001 --adapter deterministic
+pagoda run --scenario DEMO-PROPOSAL-PRESENTED-001 --interaction-case case-001
+pagoda run --scenario DEMO-PROPOSAL-PRESENTED-001 --interaction-cases all
 pagoda run --adapter deterministic
 pagoda run --adapter deterministic --reporter json
 pagoda replay --artifact artifacts/runs/<run-dir>
@@ -103,12 +106,15 @@ Root resolution order is `--root`, then `PAGODA_ROOT`, then the nearest
 - `adapter list` lists modular adapter bundles.
 - `adapter check` reports adapter health, missing environment variables, and
   missing evidence capabilities for a specific scenario.
-- `scenario create` creates a bundled scenario, evidence map, outcome contract,
-  and evidence-registry entries.
+- `scenario create` creates a bundled scenario, optional generated
+  interaction, evidence map, outcome contract, and evidence-registry entries.
 - `adapter create` creates a package-free adapter bundle and updates the
   evidence registry.
 - `run` executes every active scenario by default, or one scenario with
   `--scenario <id>`, then writes reproducible artifact bundles.
+  Generated interaction scenarios run one deterministic case by default. Use
+  `--interaction-case <case-id|index>` for repros and `--interaction-cases all`
+  for pairwise coverage.
   The default reporter prints Vitest-style run lines and a summary. Use
   `--reporter json` or `--json` for automation.
 - `replay` reruns oracle evaluation from a saved artifact.

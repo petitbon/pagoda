@@ -1,4 +1,4 @@
-import type { PagodaEvidenceMap, PagodaScenario } from '@petitbon/pagoda-core';
+import type { PagodaEvidenceMap, PagodaInteractionSpec, PagodaScenario } from '@petitbon/pagoda-core';
 import { evidenceBaseFromScenarioId, scenarioIdSlug, targetPrefix, targetSlug } from '../shared/strings.js';
 
 export const supportedInitChannels = new Set(['browser-chat', 'phone']);
@@ -15,6 +15,35 @@ export function responseOracleClause(channel: string): string {
     : 'safe proposal is visible to the user';
 }
 
+export function generatedInteractionForOutcome(outcome: string, channel: string): PagodaInteractionSpec {
+  const channelPrompt = channel === 'phone' ? 'Tell me' : 'Show me';
+  return {
+    mode: 'generated',
+    persona: {
+      id: 'starter-user',
+      traits: ['goal-oriented', 'clear']
+    },
+    slots: {
+      urgency: { values: ['standard', 'time-sensitive'] },
+      request: { values: [outcome, 'safe next step'] }
+    },
+    turns: [
+      {
+        id: 'request-outcome',
+        actor: 'user',
+        after: 'channel-ready',
+        templates: [
+          `${channelPrompt} a {urgency} {request}.`,
+          `I need a {urgency} {request}; do not commit anything without approval.`
+        ]
+      }
+    ],
+    coverage: {
+      strategy: 'seeded-pairwise'
+    }
+  };
+}
+
 export function scenarioFromInput(input: {
   targetId: string;
   scenarioId: string;
@@ -23,11 +52,12 @@ export function scenarioFromInput(input: {
   outcome: string;
   domain: string;
   risk: string;
+  interaction?: 'none' | 'generated';
 }): PagodaScenario {
   const prefix = targetPrefix(input.targetId);
   const base = evidenceBaseFromScenarioId(input.targetId, input.scenarioId);
   const responseEvidence = responseEvidenceCode(prefix, input.channel);
-  return {
+  const scenario: PagodaScenario = {
     schemaVersion: 'pagoda.scenario',
     id: input.scenarioId,
     status: 'active',
@@ -80,6 +110,8 @@ export function scenarioFromInput(input: {
       selectedCase: `${input.scenarioId}.case`
     }
   };
+  if (input.interaction !== 'none') scenario.interaction = generatedInteractionForOutcome(input.outcome, input.channel);
+  return scenario;
 }
 
 export function genericEvidenceMap(targetId: string, scenario: PagodaScenario): PagodaEvidenceMap {
@@ -123,10 +155,10 @@ export function genericEvidenceMap(targetId: string, scenario: PagodaScenario): 
   };
 }
 
-export function starterScenario(targetId: string, channel: string): PagodaScenario {
+export function starterScenario(targetId: string, channel: string, input: { interaction?: 'none' | 'generated' } = {}): PagodaScenario {
   const prefix = targetPrefix(targetId);
   const responseEvidence = responseEvidenceCode(prefix, channel);
-  return {
+  const scenario: PagodaScenario = {
     schemaVersion: 'pagoda.scenario',
     id: `${prefix}-SAFE-PROPOSAL-001`,
     status: 'active',
@@ -171,6 +203,8 @@ export function starterScenario(targetId: string, channel: string): PagodaScenar
       selectedCase: `${prefix}-SAFE-PROPOSAL-001.case`
     }
   };
+  if (input.interaction !== 'none') scenario.interaction = generatedInteractionForOutcome('safe proposal', channel);
+  return scenario;
 }
 
 export function starterEvidenceMap(targetId: string, scenario: PagodaScenario): PagodaEvidenceMap {

@@ -10,11 +10,13 @@ export function buildRunArtifactDirectory(input: {
   targetId: string;
   scenarioId: string;
   channel: string;
+  interactionCaseId?: string;
 }): string {
   const timestamp = input.startedAt.replace(/[:.]/g, '-');
+  const caseSegment = input.interactionCaseId ? `_${artifactSafeSegment(input.interactionCaseId)}` : '';
   return join(
     input.artifactRoot,
     'runs',
-    `${timestamp}_${artifactSafeSegment(input.targetId)}_${artifactSafeSegment(input.scenarioId)}_${artifactSafeSegment(input.channel)}`
+    `${timestamp}_${artifactSafeSegment(input.targetId)}_${artifactSafeSegment(input.scenarioId)}_${artifactSafeSegment(input.channel)}${caseSegment}`
   );
 }

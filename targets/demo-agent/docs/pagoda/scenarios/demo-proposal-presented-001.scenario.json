@@ -81,5 +81,43 @@
     "suite": "deterministic-demo",
     "scenario": "pass",
     "selectedCase": "DEMO-PROPOSAL-PRESENTED-001.case"
+  },
+  "interaction": {
+    "mode": "generated",
+    "persona": {
+      "id": "demo-user",
+      "traits": [
+        "goal-oriented",
+        "explicit"
+      ]
+    },
+    "slots": {
+      "request": {
+        "values": [
+          "safe proposal",
+          "next step"
+        ]
+      },
+      "urgency": {
+        "values": [
+          "standard",
+          "time-sensitive"
+        ]
+      }
+    },
+    "turns": [
+      {
+        "id": "request-proposal",
+        "actor": "user",
+        "templates": [
+          "Please give me a {urgency} {request} without committing the action.",
+          "I need a {urgency} {request}; do not commit anything yet."
+        ],
+        "after": "channel-ready"
+      }
+    ],
+    "coverage": {
+      "strategy": "seeded-pairwise"
+    }
   }
 }
