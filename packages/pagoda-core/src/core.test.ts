@@ -214,6 +214,17 @@ describe('@petitbon/pagoda-core', () => {
       'interaction.turns[0].templates references undeclared slot missing',
       'interaction.turns[1].id duplicates ask'
     ]));
+    expect(validatePagodaScenario({
+      ...scenario,
+      interaction: {
+        ...interaction,
+        slots: null,
+        turns: 'bad-turns'
+      }
+    }).errors).toEqual(expect.arrayContaining([
+      'interaction.slots must be an object',
+      'interaction.turns must be a non-empty array'
+    ]));
   });
 
   it('materializes stable case identities with seeded ordering and template choice', () => {
@@ -262,6 +273,26 @@ describe('@petitbon/pagoda-core', () => {
       seed: 'fixed',
       interaction: { ...interaction, coverage: { strategy: 'seeded-pairwise', maxCases: 1 } }
     })).toThrow(/lower than required pairwise case count/);
+  });
+
+  it('handles slot values with separator-like characters', () => {
+    const trickyInteraction = {
+      ...interaction,
+      slots: {
+        city: { values: ['A|B', 'C=D'] },
+        urgency: { values: ['normal|fast', 'urgent=now'] },
+        format: { values: ['short', 'detailed'] }
+      }
+    } satisfies PagodaInteractionSpec;
+    const materialized = materializePagodaInteraction({
+      scenarioId: 'PGD-CORE-INTERACTION-001',
+      channel: 'browser-chat',
+      seed: 'fixed',
+      interaction: trickyInteraction,
+      caseSelector: 'case-001'
+    });
+    expect(['A|B', 'C=D']).toContain(materialized.slots.city);
+    expect(materialized.turns[0].text).toContain(String(materialized.slots.city));
   });
 
   it('projects interaction into outcome contracts', () => {

@@ -161,8 +161,8 @@ const validateInteraction = (errors: string[], value: unknown): string[] => {
     }
   }
 
-  const slots = interaction.slots ?? {};
-  if (!slots || typeof slots !== 'object' || Array.isArray(slots)) {
+  const slots = interaction.slots;
+  if (slots !== undefined && (!slots || typeof slots !== 'object' || Array.isArray(slots))) {
     errors.push('interaction.slots must be an object');
   }
   const slotNames = new Set<string>();
@@ -191,7 +191,8 @@ const validateInteraction = (errors: string[], value: unknown): string[] => {
     errors.push('interaction.turns must be a non-empty array');
   }
   const turnIds = new Set<string>();
-  for (const [index, turn] of (interaction.turns ?? []).entries()) {
+  const turns = Array.isArray(interaction.turns) ? interaction.turns : [];
+  for (const [index, turn] of turns.entries()) {
     if (!turn || typeof turn !== 'object' || Array.isArray(turn)) {
       errors.push(`interaction.turns[${index}] must be an object`);
       continue;

@@ -41,7 +41,7 @@ fixtures, mappings, adapters, traces, and docs in target packs.
 ## Smoke Checks
 
 ```bash
-yarn workspace @petitbon/pagoda-cli pagoda target check --target demo-agent
+yarn workspace @petitbon/pagoda-cli pagoda check --target demo-agent
 yarn workspace @petitbon/pagoda-cli pagoda run --target demo-agent --scenario DEMO-PROPOSAL-PRESENTED-001 --channel browser-chat
 ```
 

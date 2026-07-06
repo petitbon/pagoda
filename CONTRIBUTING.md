@@ -42,7 +42,7 @@ cd packages/pagoda-cli && npm pack --dry-run && cd ../..
 Use the bundled demo target for local smoke checks:
 
 ```bash
-yarn workspace @petitbon/pagoda-cli pagoda target check --target demo-agent
+yarn workspace @petitbon/pagoda-cli pagoda check --target demo-agent
 yarn workspace @petitbon/pagoda-cli pagoda run --target demo-agent --scenario DEMO-PROPOSAL-PRESENTED-001 --channel browser-chat
 ```
 

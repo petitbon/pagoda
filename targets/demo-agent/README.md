@@ -23,7 +23,7 @@ yarn workspace @petitbon/pagoda-target-demo-agent test
 ```bash
 yarn workspace @petitbon/pagoda-cli pagoda compile --target demo-agent
 yarn workspace @petitbon/pagoda-cli pagoda validate --target demo-agent
-yarn workspace @petitbon/pagoda-cli pagoda target check --target demo-agent
+yarn workspace @petitbon/pagoda-cli pagoda check --target demo-agent
 ```
 
 ## Scenarios

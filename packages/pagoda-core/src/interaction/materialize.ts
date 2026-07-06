@@ -26,24 +26,16 @@ const compareBySeed = (seed: string) => (left: CaseCombination, right: CaseCombi
   return hashCompare === 0 ? left.caseId.localeCompare(right.caseId) : hashCompare;
 };
 
-const slotKeyFor = (slotName: string, value: PagodaInteractionValue): string =>
-  `${slotName}=${stableJson(value)}`;
-
 const pairKey = (
   leftName: string,
   leftValue: PagodaInteractionValue,
   rightName: string,
   rightValue: PagodaInteractionValue
 ): string =>
-  `${slotKeyFor(leftName, leftValue)}|${slotKeyFor(rightName, rightValue)}`;
+  stableJson([[leftName, leftValue], [rightName, rightValue]]);
 
-const parseSlotKey = (value: string): [string, PagodaInteractionValue] => {
-  const splitIndex = value.indexOf('=');
-  return [
-    value.slice(0, splitIndex),
-    JSON.parse(value.slice(splitIndex + 1)) as PagodaInteractionValue
-  ];
-};
+const parsePairKey = (value: string): [[string, PagodaInteractionValue], [string, PagodaInteractionValue]] =>
+  JSON.parse(value) as [[string, PagodaInteractionValue], [string, PagodaInteractionValue]];
 
 const cloneSlots = (slots: Record<string, PagodaInteractionValue>): Record<string, PagodaInteractionValue> => ({
   ...slots
@@ -124,9 +116,7 @@ const generatePairwiseRows = (interaction: PagodaInteractionSpec): Array<Record<
 
     while (uncovered.size > 0) {
       const [requiredPair] = [...uncovered].sort();
-      const [existingPart, newPart] = requiredPair.split('|');
-      const [existingSlotName, existingValue] = parseSlotKey(existingPart);
-      const [, newValue] = parseSlotKey(newPart);
+      const [[existingSlotName, existingValue], [, newValue]] = parsePairKey(requiredPair);
       const nextRow: Record<string, PagodaInteractionValue> = {};
       for (const slotName of coveredSlotNames) {
         nextRow[slotName] = slots[slotName].values[0];
