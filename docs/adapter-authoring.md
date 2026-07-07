@@ -97,6 +97,12 @@ Adapters still own channel mechanics such as waiting for readiness, sending
 browser-chat messages, placing phone calls, collecting platform evidence, and
 normalizing that evidence. Interaction text alone does not prove PASS.
 
+Interactive adapters should return only newly observed target turns from
+`observeTarget` and `sendCallerTurn` for efficiency. Pagoda also accepts full
+transcript snapshots and dedupes target turns by stable `PagodaTargetTurn.id`.
+If target text is materially revised, emit a new target turn id rather than
+reusing an old id.
+
 ## Canonical Observation
 
 Every adapter, regardless of platform, normalizes raw behavior to this shape:

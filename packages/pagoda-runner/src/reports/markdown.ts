@@ -12,6 +12,10 @@ export function renderRunReport(input: {
   const interactionLine = input.manifest.interactionCaseId
     ? `- Interaction Case: ${input.manifest.interactionCaseId}`
     : '';
+  const oracleStatus = input.manifest.oracleStatus ?? input.oracleResult.status;
+  const agenticLine = input.manifest.agentic
+    ? `- Agentic Session: ${input.manifest.agentic.completed ? 'completed' : `incomplete (${input.manifest.agentic.stopReason})`}`
+    : '';
   const header = [
     `- Run: ${input.manifest.runId}`,
     `- Target: ${input.manifest.targetId}`,
@@ -19,6 +23,8 @@ export function renderRunReport(input: {
     `- Channel: ${input.manifest.channel}`,
     interactionLine || null,
     `- Status: ${input.manifest.status}`,
+    `- Oracle Status: ${oracleStatus}`,
+    agenticLine || null,
     `- Started: ${input.manifest.startedAt}`,
     `- Completed: ${input.manifest.completedAt}`
   ].filter((line): line is string => line !== null).join('\n');

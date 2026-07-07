@@ -35,7 +35,7 @@ yarn workspace @petitbon/pagoda-core test
 - scenario, evidence-map, outcome-contract, and observation types;
 - scenario and evidence-map validators;
 - scenario-to-contract projection;
-- deterministic generated interaction materialization;
+- deterministic generated and agentic interaction materialization;
 - canonical evidence observation helpers;
 - deterministic oracle evaluation.
 

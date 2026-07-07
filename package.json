@@ -20,7 +20,8 @@
   ],
   "scripts": {
     "build": "yarn workspace @petitbon/pagoda-core build && yarn workspace @petitbon/pagoda-adapter-sdk build && yarn workspace @petitbon/pagoda-runner build && yarn workspace @petitbon/pagoda-cli build && yarn workspace @petitbon/pagoda-target-demo-agent build",
-    "test": "yarn workspace @petitbon/pagoda-core test && yarn workspace @petitbon/pagoda-adapter-sdk test && yarn workspace @petitbon/pagoda-runner test && yarn workspace @petitbon/pagoda-cli test && yarn workspace @petitbon/pagoda-target-demo-agent test",
+    "test": "yarn build && yarn test:workspaces",
+    "test:workspaces": "yarn workspace @petitbon/pagoda-core test:unit && yarn workspace @petitbon/pagoda-adapter-sdk test:unit && yarn workspace @petitbon/pagoda-runner test:unit && yarn workspace @petitbon/pagoda-cli test:unit && yarn workspace @petitbon/pagoda-target-demo-agent test:unit",
     "validate": "yarn workspace @petitbon/pagoda-cli pagoda validate",
     "compile": "yarn workspace @petitbon/pagoda-cli pagoda compile"
   },

@@ -7,7 +7,7 @@ export const usage = `Usage:
   pagoda adapter list [--root <path>]
   pagoda adapter check [--root <path>] [--adapter <id>] [--channel <channel>] [--scenario <id>]
   pagoda adapter create --id <id> [--root <path>] [--channel <channel>] [--name <name>] [--force]
-  pagoda scenario create --id <id> [--root <path>] [--title <title>] [--channel <channel>] [--outcome <outcome>] [--domain <domain>] [--risk <risk>] [--interaction none|generated]
+  pagoda scenario create --id <id> [--root <path>] [--title <title>] [--channel <channel>] [--outcome <outcome>] [--domain <domain>] [--risk <risk>] [--interaction none|generated|agentic]
   pagoda codex install [--root <path>] [--force]
   pagoda run [--root <path>] [--adapter <id>] [--channel <channel>] [--seed <seed>] [--interaction-cases all] [--reporter default|json]
   pagoda run [--root <path>] [--adapter <id>] --scenario <id> [--channel <channel>] [--seed <seed>] [--interaction-case <case-id|index>] [--interaction-cases all] [--artifact-directory <path>] [--reporter default|json]

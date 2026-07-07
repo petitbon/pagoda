@@ -37,6 +37,7 @@ export async function createAdapterBundle(context: PagodaRootContext, args: read
     channel,
     kind: 'node',
     entrypoint: './index.mjs',
+    interactionModes: ['generated'],
     producesEvidenceCodes: [...baseEvidenceCodes, `${prefix}_SETUP_READY`],
     requiresEnv: []
   };

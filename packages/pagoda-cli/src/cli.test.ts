@@ -10,6 +10,7 @@ import { resolveInputPath, resolveRootContext } from './target-pack/context.js';
 import { validateTargetManifestStructure } from './target-pack/validation.js';
 import { starterAdapter } from './generators/adapter.js';
 import { starterEvidenceMap, starterScenario } from './generators/scenario.js';
+import { missingAdapterInteractionCapabilities } from './target-pack/capabilities.js';
 
 async function withTempDir<T>(fn: (directory: string) => Promise<T>): Promise<T> {
   const directory = await mkdtemp(join(tmpdir(), 'pagoda-cli-'));
@@ -567,6 +568,475 @@ describe('@petitbon/pagoda-cli', () => {
       await expect(captureLogs(async () => {
         await main(['run', '--root', root, '--scenario', 'SAMPLE-AGENT-LEGACY-001', '--interaction-case', 'case-001', '--reporter', 'json']);
       })).rejects.toThrow(/has no interaction/);
+    });
+  });
+
+  it('can create agentic scenarios and reports missing interactive adapter support', async () => {
+    await withTempDir(async (directory) => {
+      const root = join(directory, 'sample-agent', '.pagoda');
+      await captureLogs(async () => {
+        await main(['init', '--root', root]);
+      });
+
+      await captureLogs(async () => {
+        await main([
+          'scenario',
+          'create',
+          '--root',
+          root,
+          '--id',
+          'SAMPLE-AGENT-AGENTIC-CALLER-001',
+          '--title',
+          'Agentic caller',
+          '--channel',
+          'browser-chat',
+          '--interaction',
+          'agentic'
+        ]);
+      });
+      const scenarioText = await readFile(join(root, 'scenarios/sample-agent-agentic-caller-001/scenario.json'), 'utf8');
+      expect(scenarioText).toContain('"mode": "agentic"');
+      expect(scenarioText).toContain('"interventionPolicy"');
+      expect(scenarioText).toContain('{urgency}');
+      expect(scenarioText).toContain('{flexibility}');
+      expect(scenarioText).not.toContain('"stopOn"');
+
+      let checkExitCode = 0;
+      const checkLogs = await captureLogs(async () => {
+        const result = await main(['adapter', 'check', '--root', root, '--adapter', 'replay', '--scenario', 'SAMPLE-AGENT-AGENTIC-CALLER-001']);
+        checkExitCode = result.exitCode;
+      });
+      const check = JSON.parse(checkLogs.join('\n'));
+      expect(check.capability).toMatchObject({
+        status: 'missing-capabilities',
+        requiredInteractionMode: 'agentic',
+        missingInteractionModes: ['agentic']
+      });
+      expect(checkExitCode).toBe(1);
+
+      const scenario = JSON.parse(scenarioText);
+      expect(scenario.interaction.goal.facts).toBeUndefined();
+      expect(missingAdapterInteractionCapabilities(undefined, scenario)).toEqual(['agentic']);
+
+      const replayManifestPath = join(root, 'adapters', 'replay', 'pagoda.adapter.json');
+      const replayManifest = JSON.parse(await readFile(replayManifestPath, 'utf8'));
+      replayManifest.interactionModes = ['agentic'];
+      await writeFile(replayManifestPath, `${JSON.stringify(replayManifest, null, 2)}\n`, 'utf8');
+      let implementationCheckExitCode = 0;
+      const implementationCheckLogs = await captureLogs(async () => {
+        const result = await main(['adapter', 'check', '--root', root, '--adapter', 'replay', '--scenario', 'SAMPLE-AGENT-AGENTIC-CALLER-001']);
+        implementationCheckExitCode = result.exitCode;
+      });
+      const implementationCheck = JSON.parse(implementationCheckLogs.join('\n'));
+      expect(implementationCheck.capability).toMatchObject({
+        status: 'missing-capabilities',
+        missingInteractionModes: [],
+        missingInteractionImplementation: true
+      });
+      expect(implementationCheckExitCode).toBe(1);
+    });
+  });
+
+  it('runs an agentic scenario with an interactive adapter and freezes the caller session', async () => {
+    await withTempDir(async (directory) => {
+      const root = join(directory, 'sample-agent', '.pagoda');
+      await captureLogs(async () => {
+        await main(['init', '--root', root]);
+      });
+      await captureLogs(async () => {
+        await main([
+          'scenario',
+          'create',
+          '--root',
+          root,
+          '--id',
+          'SAMPLE-AGENT-AGENTIC-RUN-001',
+          '--title',
+          'Agentic run',
+          '--channel',
+          'browser-chat',
+          '--interaction',
+          'agentic'
+        ]);
+      });
+
+      const adapterRoot = join(root, 'adapters', 'agentic-local');
+      await mkdir(adapterRoot, { recursive: true });
+      await writeFile(join(adapterRoot, 'pagoda.adapter.json'), `${JSON.stringify({
+        schemaVersion: 'pagoda.adapter',
+        id: 'agentic-local',
+        targetId: 'sample-agent',
+        channel: 'browser-chat',
+        kind: 'node',
+        entrypoint: './index.mjs',
+        interactionModes: ['generated', 'agentic'],
+        producesEvidenceCodes: ['*'],
+        requiresEnv: []
+      }, null, 2)}\n`, 'utf8');
+      await writeFile(join(adapterRoot, 'index.mjs'), `
+const runs = new Map();
+const sentTurns = new Map();
+
+const adapter = {
+  targetId: 'sample-agent',
+  async healthCheck() {
+    return { status: 'ready', message: 'agentic local ready', evidenceSources: ['transcript'] };
+  },
+  async prepare(run) {
+    runs.set(run.runId, run);
+    return { runId: run.runId, targetId: run.targetId, artifactDirectory: run.artifactDirectory };
+  },
+  async execute(prepared) {
+    return { runId: prepared.runId, status: 'completed', exitCode: 0 };
+  },
+  async startInteractive(run) {
+    runs.set(run.runId, run);
+    sentTurns.set(run.runId, []);
+    return { runId: run.runId, targetId: run.targetId, artifactDirectory: run.artifactDirectory };
+  },
+  async observeTarget() {
+    return { turns: [] };
+  },
+  async sendCallerTurn(prepared, turn) {
+    const turns = sentTurns.get(prepared.runId) ?? [];
+    turns.push(turn);
+    sentTurns.set(prepared.runId, turns);
+    if (turn.decision === 'accept') return { turns: [] };
+    return {
+      turns: [{
+        id: \`target-\${turn.id}\`,
+        actor: 'assistant',
+        text: 'I have a safe next step available.'
+      }]
+    };
+  },
+  async finishInteractive(prepared) {
+    return {
+      runId: prepared.runId,
+      status: 'completed',
+      exitCode: 0,
+      stdout: 'agentic completed',
+      stderr: '',
+      metadata: { sentTurns: sentTurns.get(prepared.runId) ?? [] }
+    };
+  },
+  async collectObservations(result) {
+    const run = runs.get(result.runId);
+    const channelContract = run.channelContracts?.channels?.[run.channel] ?? run.scenario.channelContracts.channels[run.channel];
+    const acceptedEvidenceCodes = [
+      ...run.scenario.evidence.acceptedEvidenceCodes,
+      ...run.scenario.evidence.requiredWorkflowOutcomes,
+      ...run.scenario.channelContracts.commonEvidenceCodes,
+      ...(channelContract?.requiredEvidenceCodes ?? [])
+    ];
+    return {
+      acceptedEvidenceCodes,
+      rejectedEvidenceCodes: [],
+      repairCodes: [],
+      observedTraceSources: ['transcript'],
+      observedCorrelation: ['channel'],
+      forbiddenToolNames: [],
+      forbiddenEvents: [],
+      forbiddenClaims: [],
+      setupEvidenceCodes: run.scenario.fixture.setupEvidenceCodes,
+      evidenceRefsByCode: Object.fromEntries([...acceptedEvidenceCodes, ...run.scenario.fixture.setupEvidenceCodes].map((code) => [code, [\`agentic:\${code}\`]])),
+      collectorStatus: null
+    };
+  },
+  async cleanup(prepared) {
+    runs.delete(prepared.runId);
+    sentTurns.delete(prepared.runId);
+  }
+};
+
+export default adapter;
+`, 'utf8');
+
+      const checkLogs = await captureLogs(async () => {
+        const result = await main(['adapter', 'check', '--root', root, '--adapter', 'agentic-local', '--scenario', 'SAMPLE-AGENT-AGENTIC-RUN-001']);
+        expect(result.exitCode).toBe(0);
+      });
+      expect(JSON.parse(checkLogs.join('\n')).capability).toMatchObject({
+        status: 'ready',
+        requiredInteractionMode: 'agentic',
+        missingInteractionModes: [],
+        missingInteractionImplementation: false
+      });
+
+      const runLogs = await captureLogs(async () => {
+        const result = await main(['run', '--root', root, '--adapter', 'agentic-local', '--scenario', 'SAMPLE-AGENT-AGENTIC-RUN-001', '--reporter', 'json']);
+        expect(result.exitCode).toBe(0);
+      });
+      const run = JSON.parse(runLogs.join('\n')) as {
+        artifactDirectory: string;
+        agentic: { completed: boolean; stopReason: string };
+        oracle: { status: string };
+      };
+      expect(run.oracle.status).toBe('PASS');
+      expect(run.agentic).toEqual({ completed: true, stopReason: 'completed' });
+      const interaction = JSON.parse(await readFile(join(run.artifactDirectory, 'interaction.json'), 'utf8'));
+      expect(interaction.goal.summary).toContain('Complete the sample-agent-agentic-run outcome');
+      expect(interaction.goal.summary).toContain(String(interaction.slots.urgency));
+      expect(interaction.goal.summary).toContain(String(interaction.slots.flexibility));
+      expect(interaction.goal.summary).not.toContain('{urgency}');
+      expect(interaction.goal.summary).not.toContain('{flexibility}');
+      const callerSession = JSON.parse(await readFile(join(run.artifactDirectory, 'caller-session.json'), 'utf8'));
+      expect(callerSession.stopReason).toBe('completed');
+      expect(callerSession.turns).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          actor: 'caller',
+          text: expect.stringContaining('Complete the sample-agent-agentic-run outcome')
+        })
+      ]));
+      const callerTurn = callerSession.turns.find((turn: { actor: string }) => turn.actor === 'caller');
+      expect(callerTurn.text).toContain(String(interaction.slots.urgency));
+      expect(callerTurn.text).toContain(String(interaction.slots.flexibility));
+      expect(callerTurn.text).not.toContain('{urgency}');
+      expect(callerTurn.text).not.toContain('{flexibility}');
+    });
+  });
+
+  it('fails an incomplete agentic session even when collected evidence passes', async () => {
+    await withTempDir(async (directory) => {
+      const root = join(directory, 'sample-agent', '.pagoda');
+      await captureLogs(async () => {
+        await main(['init', '--root', root]);
+      });
+      await captureLogs(async () => {
+        await main([
+          'scenario',
+          'create',
+          '--root',
+          root,
+          '--id',
+          'SAMPLE-AGENT-AGENTIC-INCOMPLETE-001',
+          '--title',
+          'Agentic incomplete',
+          '--channel',
+          'browser-chat',
+          '--interaction',
+          'agentic'
+        ]);
+      });
+
+      const scenarioPath = join(root, 'scenarios/sample-agent-agentic-incomplete-001/scenario.json');
+      const scenario = JSON.parse(await readFile(scenarioPath, 'utf8'));
+      scenario.interaction.termination.maxTurns = 1;
+      await writeFile(scenarioPath, `${JSON.stringify(scenario, null, 2)}\n`, 'utf8');
+
+      const adapterRoot = join(root, 'adapters', 'agentic-incomplete');
+      await mkdir(adapterRoot, { recursive: true });
+      await writeFile(join(adapterRoot, 'pagoda.adapter.json'), `${JSON.stringify({
+        schemaVersion: 'pagoda.adapter',
+        id: 'agentic-incomplete',
+        targetId: 'sample-agent',
+        channel: 'browser-chat',
+        kind: 'node',
+        entrypoint: './index.mjs',
+        interactionModes: ['agentic'],
+        producesEvidenceCodes: ['*'],
+        requiresEnv: []
+      }, null, 2)}\n`, 'utf8');
+      await writeFile(join(adapterRoot, 'index.mjs'), `
+const runs = new Map();
+
+const adapter = {
+  targetId: 'sample-agent',
+  async healthCheck() {
+    return { status: 'ready', message: 'agentic incomplete ready', evidenceSources: ['transcript'] };
+  },
+  async prepare(run) {
+    runs.set(run.runId, run);
+    return { runId: run.runId, targetId: run.targetId, artifactDirectory: run.artifactDirectory };
+  },
+  async execute(prepared) {
+    return { runId: prepared.runId, status: 'completed', exitCode: 0 };
+  },
+  async startInteractive(run) {
+    runs.set(run.runId, run);
+    return { runId: run.runId, targetId: run.targetId, artifactDirectory: run.artifactDirectory };
+  },
+  async observeTarget() {
+    return { turns: [] };
+  },
+  async sendCallerTurn() {
+    return { turns: [] };
+  },
+  async finishInteractive(prepared) {
+    return { runId: prepared.runId, status: 'completed', exitCode: 0, stdout: 'finished', stderr: '' };
+  },
+  async collectObservations(result) {
+    const run = runs.get(result.runId);
+    const channelContract = run.channelContracts?.channels?.[run.channel] ?? run.scenario.channelContracts.channels[run.channel];
+    const acceptedEvidenceCodes = [
+      ...run.scenario.evidence.acceptedEvidenceCodes,
+      ...run.scenario.evidence.requiredWorkflowOutcomes,
+      ...run.scenario.channelContracts.commonEvidenceCodes,
+      ...(channelContract?.requiredEvidenceCodes ?? [])
+    ];
+    return {
+      acceptedEvidenceCodes,
+      rejectedEvidenceCodes: [],
+      repairCodes: [],
+      observedTraceSources: ['transcript'],
+      observedCorrelation: ['channel'],
+      forbiddenToolNames: [],
+      forbiddenEvents: [],
+      forbiddenClaims: [],
+      setupEvidenceCodes: run.scenario.fixture.setupEvidenceCodes,
+      evidenceRefsByCode: Object.fromEntries([...acceptedEvidenceCodes, ...run.scenario.fixture.setupEvidenceCodes].map((code) => [code, [\`incomplete:\${code}\`]])),
+      collectorStatus: null
+    };
+  },
+  async cleanup(prepared) {
+    runs.delete(prepared.runId);
+  }
+};
+
+export default adapter;
+`, 'utf8');
+
+      const runLogs = await captureLogs(async () => {
+        const result = await main(['run', '--root', root, '--adapter', 'agentic-incomplete', '--scenario', 'SAMPLE-AGENT-AGENTIC-INCOMPLETE-001', '--reporter', 'json']);
+        expect(result.exitCode).toBe(1);
+      });
+      const run = JSON.parse(runLogs.join('\n')) as {
+        artifactDirectory: string;
+        agentic: { completed: boolean; stopReason: string };
+        oracle: { status: string };
+      };
+      expect(run.oracle.status).toBe('PASS');
+      expect(run.agentic).toEqual({ completed: false, stopReason: 'max-turns' });
+      const callerSession = JSON.parse(await readFile(join(run.artifactDirectory, 'caller-session.json'), 'utf8'));
+      expect(callerSession.stopReason).toBe('max-turns');
+      const manifest = JSON.parse(await readFile(join(run.artifactDirectory, 'run.json'), 'utf8'));
+      expect(manifest.status).toBe('FAIL');
+      expect(manifest.oracleStatus).toBe('PASS');
+      expect(manifest.agentic).toEqual({ completed: false, stopReason: 'max-turns' });
+      const report = await readFile(join(run.artifactDirectory, 'report.md'), 'utf8');
+      expect(report).toContain('- Status: FAIL');
+      expect(report).toContain('- Oracle Status: PASS');
+      expect(report).toContain('- Agentic Session: incomplete (max-turns)');
+    });
+  });
+
+  it('writes failed artifacts for agentic startup timeout and startup adapter failure', async () => {
+    await withTempDir(async (directory) => {
+      for (const mode of ['timeout', 'adapter-failed'] as const) {
+        const root = join(directory, `sample-agent-${mode}`, '.pagoda');
+        await captureLogs(async () => {
+          await main(['init', '--root', root]);
+        });
+        await captureLogs(async () => {
+          await main([
+            'scenario',
+            'create',
+            '--root',
+            root,
+            '--id',
+            `SAMPLE-AGENT-${mode.toUpperCase()}-001`,
+            '--title',
+            `Agentic ${mode}`,
+            '--channel',
+            'browser-chat',
+            '--interaction',
+            'agentic'
+          ]);
+        });
+
+        const scenarioPath = join(root, `scenarios/sample-agent-${mode}-001/scenario.json`);
+        const scenario = JSON.parse(await readFile(scenarioPath, 'utf8'));
+        scenario.interaction.termination.maxDurationMs = mode === 'timeout' ? 1 : 1000;
+        await writeFile(scenarioPath, `${JSON.stringify(scenario, null, 2)}\n`, 'utf8');
+
+        const adapterRoot = join(root, 'adapters', `agentic-${mode}`);
+        await mkdir(adapterRoot, { recursive: true });
+        await writeFile(join(adapterRoot, 'pagoda.adapter.json'), `${JSON.stringify({
+          schemaVersion: 'pagoda.adapter',
+          id: `agentic-${mode}`,
+          targetId: `sample-agent-${mode}`,
+          channel: 'browser-chat',
+          kind: 'node',
+          entrypoint: './index.mjs',
+          interactionModes: ['agentic'],
+          producesEvidenceCodes: ['*'],
+          requiresEnv: []
+        }, null, 2)}\n`, 'utf8');
+        await writeFile(join(adapterRoot, 'index.mjs'), `
+const runs = new Map();
+const mode = ${JSON.stringify(mode)};
+
+const adapter = {
+  targetId: ${JSON.stringify(`sample-agent-${mode}`)},
+  async healthCheck() {
+    return { status: 'ready', message: 'agentic startup failure ready', evidenceSources: ['transcript'] };
+  },
+  async prepare(run) {
+    runs.set(run.runId, run);
+    return { runId: run.runId, targetId: run.targetId, artifactDirectory: run.artifactDirectory };
+  },
+  async execute(prepared) {
+    return { runId: prepared.runId, status: 'completed', exitCode: 0 };
+  },
+  async startInteractive(run) {
+    if (mode === 'adapter-failed') throw new Error('startup exploded');
+    return new Promise((resolve) => setTimeout(() => {
+      runs.set(run.runId, run);
+      resolve({ runId: run.runId, targetId: run.targetId, artifactDirectory: run.artifactDirectory });
+    }, 20));
+  },
+  async observeTarget() {
+    return { turns: [] };
+  },
+  async sendCallerTurn() {
+    return { turns: [] };
+  },
+  async finishInteractive(prepared) {
+    return { runId: prepared.runId, status: 'completed', exitCode: 0, stdout: 'finished', stderr: '' };
+  },
+  async collectObservations(result) {
+    const run = runs.get(result.runId);
+    if (!run) throw new Error('run never started');
+    return {
+      acceptedEvidenceCodes: [],
+      rejectedEvidenceCodes: [],
+      repairCodes: [],
+      observedTraceSources: [],
+      observedCorrelation: [],
+      forbiddenToolNames: [],
+      forbiddenEvents: [],
+      forbiddenClaims: [],
+      setupEvidenceCodes: [],
+      evidenceRefsByCode: {},
+      collectorStatus: 'SETUP_FAILED'
+    };
+  },
+  async cleanup(prepared) {
+    runs.delete(prepared.runId);
+  }
+};
+
+export default adapter;
+`, 'utf8');
+
+        const runLogs = await captureLogs(async () => {
+          const result = await main(['run', '--root', root, '--adapter', `agentic-${mode}`, '--scenario', `SAMPLE-AGENT-${mode.toUpperCase()}-001`, '--reporter', 'json']);
+          expect(result.exitCode).toBe(1);
+        });
+        const run = JSON.parse(runLogs.join('\n')) as {
+          artifactDirectory: string;
+          agentic: { completed: boolean; stopReason: string };
+          oracle: { status: string };
+        };
+        expect(run.oracle.status).toBe('SETUP_FAILED');
+        expect(run.agentic).toEqual({ completed: false, stopReason: mode });
+        const callerSession = JSON.parse(await readFile(join(run.artifactDirectory, 'caller-session.json'), 'utf8'));
+        expect(callerSession.stopReason).toBe(mode);
+        const manifest = JSON.parse(await readFile(join(run.artifactDirectory, 'run.json'), 'utf8'));
+        expect(manifest.status).toBe('SETUP_FAILED');
+        expect(manifest.oracleStatus).toBe('SETUP_FAILED');
+        expect(manifest.agentic).toEqual({ completed: false, stopReason: mode });
+      }
     });
   });
 

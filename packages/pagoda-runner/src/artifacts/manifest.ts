@@ -1,4 +1,4 @@
-import type { PagodaEvidenceScenarioStatus } from '@petitbon/pagoda-core';
+import type { PagodaCallerSession, PagodaEvidenceScenarioStatus } from '@petitbon/pagoda-core';
 
 export type PagodaRunArtifactManifest = {
   schemaVersion: 'pagoda.run-artifact';
@@ -7,8 +7,14 @@ export type PagodaRunArtifactManifest = {
   scenarioId: string;
   channel: string;
   seed?: string;
+  interactionMode?: 'generated' | 'agentic';
   interactionCaseId?: string;
   status: PagodaEvidenceScenarioStatus;
+  oracleStatus?: PagodaEvidenceScenarioStatus;
+  agentic?: {
+    completed: boolean;
+    stopReason: PagodaCallerSession['stopReason'];
+  };
   startedAt: string;
   completedAt: string;
   files: Record<string, string>;
@@ -21,6 +27,7 @@ export const runArtifactFiles = {
   evidenceMap: 'evidence-map.json',
   outcomeContract: 'outcome-contract.json',
   interaction: 'interaction.json',
+  callerSession: 'caller-session.json',
   rawObservations: 'raw-observations.json',
   canonicalObservation: 'canonical-observation.json',
   oracleResult: 'oracle-result.json',

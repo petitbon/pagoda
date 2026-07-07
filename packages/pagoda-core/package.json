@@ -69,7 +69,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "test": "vitest run src --passWithNoTests"
+    "test": "yarn test:unit",
+    "test:unit": "vitest run src --passWithNoTests"
   },
   "devDependencies": {
     "vitest": "^4.1.9"

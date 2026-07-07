@@ -29,3 +29,18 @@ export function missingAdapterEvidenceCapabilities(
   if (produced.has('*')) return [];
   return requiredEvidenceCodesForScenario(scenario, channel).filter((code) => !produced.has(code));
 }
+
+export function interactionModeForScenario(scenario: PagodaScenario): 'generated' | 'agentic' | undefined {
+  return scenario.interaction?.mode;
+}
+
+export function missingAdapterInteractionCapabilities(
+  adapter: PagodaAdapterManifest | undefined,
+  scenario: PagodaScenario
+): string[] {
+  const mode = interactionModeForScenario(scenario);
+  if (!mode || mode === 'generated') return [];
+  if (!adapter) return [mode];
+  const supported = new Set(adapter.interactionModes ?? ['generated']);
+  return supported.has(mode) ? [] : [mode];
+}

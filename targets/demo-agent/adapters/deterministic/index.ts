@@ -12,6 +12,12 @@ const preparedRuns = new Map<string, PagodaRunPlan>();
 const evidenceRefs = (codes: readonly string[]): Record<string, string[]> =>
   Object.fromEntries(codes.map((code) => [code, [`demo-agent:${code}`]]));
 
+const interactionText = (run: PagodaRunPlan): string => {
+  if (!run.interaction) return '';
+  if (run.interaction.mode === 'agentic') return ` ${run.interaction.caseId} ${run.interaction.goal.summary}`;
+  return ` ${run.interaction.caseId} ${run.interaction.turns.map((turn) => turn.text).join(' ')}`;
+};
+
 const passingObservation = (): CanonicalEvidenceObservationSet => {
   const acceptedEvidenceCodes = [
     'DEMO_OUTCOME_PROVEN',
@@ -93,7 +99,7 @@ export const pagodaTargetAdapter: PagodaTargetAdapter = {
     return {
       runId: prepared.runId,
       status: run ? 'completed' : 'failed',
-      stdout: run ? `demo-agent completed ${run.scenario.id}${run.interaction ? ` ${run.interaction.caseId} ${run.interaction.turns.map((turn) => turn.text).join(' ')}` : ''}` : '',
+      stdout: run ? `demo-agent completed ${run.scenario.id}${interactionText(run)}` : '',
       stderr: run ? '' : 'prepared run was not found',
       exitCode: run ? 0 : 1,
       metadata: {

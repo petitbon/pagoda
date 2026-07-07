@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "test": "vitest run adapters --passWithNoTests",
+    "test": "yarn workspace @petitbon/pagoda-core build && yarn workspace @petitbon/pagoda-adapter-sdk build && yarn test:unit",
+    "test:unit": "vitest run adapters --passWithNoTests",
     "validate": "yarn workspace @petitbon/pagoda-cli pagoda validate --target demo-agent",
     "compile": "yarn workspace @petitbon/pagoda-cli pagoda compile --target demo-agent"
   },

@@ -7,12 +7,26 @@ export type {
   PagodaScenarioStatus
 } from './model/scenario.js';
 export type {
+  PagodaAgenticInteractionGoal,
+  PagodaAgenticInteractionKnowledge,
+  PagodaAgenticInteractionSpec,
+  PagodaAgenticInterventionPolicy,
+  PagodaAgenticInterventionTrigger,
+  PagodaAgenticTerminationPolicy,
+  PagodaCallerAgentDecision,
+  PagodaCallerSession,
+  PagodaCallerTurn,
+  PagodaGeneratedInteractionSpec,
   PagodaInteractionCoverage,
+  PagodaInteractionPersona,
   PagodaInteractionSlot,
   PagodaInteractionSpec,
   PagodaInteractionTurnTemplate,
   PagodaInteractionValue,
-  PagodaMaterializedInteraction
+  PagodaMaterializedAgenticInteraction,
+  PagodaMaterializedGeneratedInteraction,
+  PagodaMaterializedInteraction,
+  PagodaTargetTurn
 } from './model/interaction.js';
 export type { PagodaOutcomeContract } from './model/outcome-contract.js';
 export type {

@@ -1,6 +1,11 @@
 import { createHash } from 'node:crypto';
 import type {
+  PagodaAgenticInteractionGoal,
+  PagodaAgenticInteractionKnowledge,
+  PagodaAgenticInterventionPolicy,
+  PagodaAgenticTerminationPolicy,
   PagodaInteractionSpec,
+  PagodaInteractionPersona,
   PagodaInteractionValue,
   PagodaMaterializedInteraction
 } from '../model/interaction.js';
@@ -39,6 +44,58 @@ const parsePairKey = (value: string): [[string, PagodaInteractionValue], [string
 
 const cloneSlots = (slots: Record<string, PagodaInteractionValue>): Record<string, PagodaInteractionValue> => ({
   ...slots
+});
+
+const renderStringArray = (
+  values: string[] | undefined,
+  slots: Record<string, PagodaInteractionValue>
+): string[] | undefined =>
+  values ? values.map((value) => renderTemplate(value, slots)) : undefined;
+
+const clonePersona = (
+  persona: PagodaInteractionPersona,
+  slots?: Record<string, PagodaInteractionValue>
+): PagodaInteractionPersona => ({
+  id: persona.id,
+  traits: slots ? renderStringArray(persona.traits, slots) : persona.traits ? [...persona.traits] : undefined
+});
+
+const cloneGoal = (
+  goal: PagodaAgenticInteractionGoal,
+  slots?: Record<string, PagodaInteractionValue>
+): PagodaAgenticInteractionGoal => ({
+  summary: slots ? renderTemplate(goal.summary, slots) : goal.summary,
+  facts: goal.facts
+    ? Object.fromEntries(Object.entries(goal.facts).map(([name, value]) => [
+        name,
+        slots && typeof value === 'string' ? renderTemplate(value, slots) : value
+      ]))
+    : undefined,
+  acceptableAlternatives: slots ? renderStringArray(goal.acceptableAlternatives, slots) : goal.acceptableAlternatives ? [...goal.acceptableAlternatives] : undefined,
+  successCriteria: slots ? goal.successCriteria.map((criterion) => renderTemplate(criterion, slots)) : [...goal.successCriteria]
+});
+
+const cloneKnowledge = (
+  knowledge: PagodaAgenticInteractionKnowledge | undefined,
+  slots?: Record<string, PagodaInteractionValue>
+): PagodaAgenticInteractionKnowledge | undefined =>
+  knowledge
+    ? {
+        knownFacts: slots ? renderStringArray(knowledge.knownFacts, slots) : knowledge.knownFacts ? [...knowledge.knownFacts] : undefined,
+        unknownFacts: slots ? renderStringArray(knowledge.unknownFacts, slots) : knowledge.unknownFacts ? [...knowledge.unknownFacts] : undefined,
+        disclosureRules: slots ? renderStringArray(knowledge.disclosureRules, slots) : knowledge.disclosureRules ? [...knowledge.disclosureRules] : undefined
+      }
+    : undefined;
+
+const cloneInterventionPolicy = (policy: PagodaAgenticInterventionPolicy): PagodaAgenticInterventionPolicy => ({
+  triggers: [...policy.triggers],
+  patience: policy.patience
+});
+
+const cloneTermination = (termination: PagodaAgenticTerminationPolicy): PagodaAgenticTerminationPolicy => ({
+  maxTurns: termination.maxTurns,
+  maxDurationMs: termination.maxDurationMs,
+  stopOn: termination.stopOn ? [...termination.stopOn] : undefined
 });
 
 const selectedTemplateIndex = (seed: string, caseId: string, turnId: string, count: number): number => {
@@ -170,22 +227,39 @@ const materializeCase = (
   interaction: PagodaInteractionSpec,
   seed: string,
   selected: CaseCombination
-): PagodaMaterializedInteraction => ({
-  caseId: selected.caseId,
-  seed,
-  slots: cloneSlots(selected.slots),
-  turns: interaction.turns.map((turn) => {
-    const template = turn.templates[selectedTemplateIndex(seed, selected.caseId, turn.id, turn.templates.length)];
+): PagodaMaterializedInteraction => {
+  if (interaction.mode === 'agentic') {
     return {
-      id: turn.id,
-      actor: turn.actor,
-      text: renderTemplate(template, selected.slots),
-      template,
-      after: turn.after,
-      delayMs: turn.delayMs
+      mode: 'agentic',
+      caseId: selected.caseId,
+      seed,
+      slots: cloneSlots(selected.slots),
+      persona: clonePersona(interaction.persona, selected.slots),
+      goal: cloneGoal(interaction.goal, selected.slots),
+      knowledge: cloneKnowledge(interaction.knowledge, selected.slots),
+      interventionPolicy: cloneInterventionPolicy(interaction.interventionPolicy),
+      termination: cloneTermination(interaction.termination)
     };
-  })
-});
+  }
+
+  return {
+    mode: 'generated',
+    caseId: selected.caseId,
+    seed,
+    slots: cloneSlots(selected.slots),
+    turns: interaction.turns.map((turn) => {
+      const template = turn.templates[selectedTemplateIndex(seed, selected.caseId, turn.id, turn.templates.length)];
+      return {
+        id: turn.id,
+        actor: turn.actor,
+        text: renderTemplate(template, selected.slots),
+        template,
+        after: turn.after,
+        delayMs: turn.delayMs
+      };
+    })
+  };
+};
 
 export function listPagodaInteractionCases(input: {
   scenarioId: string;

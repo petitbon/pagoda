@@ -53,6 +53,7 @@ export async function initTargetPack(args: readonly string[], io: PagodaCliIo): 
     channel,
     kind: 'node',
     entrypoint: './index.mjs',
+    interactionModes: ['generated'],
     producesEvidenceCodes: [
       ...scenario.evidence.acceptedEvidenceCodes,
       ...scenario.evidence.requiredWorkflowOutcomes,
@@ -70,6 +71,7 @@ export async function initTargetPack(args: readonly string[], io: PagodaCliIo): 
     description: 'Replays saved canonical observations without driving the target system.',
     kind: 'node',
     entrypoint: './index.mjs',
+    interactionModes: ['generated'],
     producesEvidenceCodes: ['*'],
     requiresEnv: []
   };

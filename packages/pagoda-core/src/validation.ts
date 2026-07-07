@@ -1,4 +1,5 @@
 import type {
+  PagodaAgenticInterventionTrigger,
   PagodaInteractionSpec,
   PagodaChannel,
   PagodaEvidenceMap,
@@ -142,26 +143,84 @@ const validateChannelContracts = (errors: string[], scenario: Partial<PagodaScen
 
 const slotTokenPattern = /\{([A-Za-z0-9_-]+)\}/g;
 
-const validateInteraction = (errors: string[], value: unknown): string[] => {
+const validateSlotReferences = (
+  errors: string[],
+  path: string,
+  value: string,
+  slotNames: Set<string>
+): void => {
+  for (const match of value.matchAll(slotTokenPattern)) {
+    const slotName = match[1];
+    if (!slotNames.has(slotName)) errors.push(`${path} references undeclared slot ${slotName}`);
+  }
+};
+
+const validateStringArraySlotReferences = (
+  errors: string[],
+  path: string,
+  values: readonly string[],
+  slotNames: Set<string>
+): void => {
+  for (const [index, value] of values.entries()) {
+    validateSlotReferences(errors, `${path}[${index}]`, value, slotNames);
+  }
+};
+
+type PartialInteraction = Partial<PagodaInteractionSpec> & {
+  mode?: unknown;
+  persona?: unknown;
+  slots?: unknown;
+  turns?: unknown;
+  coverage?: unknown;
+  goal?: unknown;
+  knowledge?: unknown;
+  interventionPolicy?: unknown;
+  termination?: unknown;
+};
+
+const allowedAgenticInterventionTriggers = new Set<PagodaAgenticInterventionTrigger>([
+  'answer-question',
+  'ask-clarification',
+  'correct-wrong-service',
+  'correct-wrong-staff',
+  'correct-wrong-date',
+  'correct-wrong-time',
+  'reject-out-of-policy',
+  'accept-valid-option',
+  'verify-confirmation',
+  'end-when-complete'
+]);
+
+const validateInteractionPersona = (
+  errors: string[],
+  path: string,
+  value: unknown,
+  required: boolean,
+  slotNames?: Set<string>
+): string[] => {
   const texts: string[] = [];
-  if (value === undefined) return texts;
-  const interaction = value as Partial<PagodaInteractionSpec>;
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    errors.push('interaction must be an object');
+  if (value === undefined) {
+    if (required) errors.push(`${path} must be an object`);
     return texts;
   }
-  if (interaction.mode !== 'generated') errors.push('interaction.mode must be generated');
-
-  if (interaction.persona !== undefined) {
-    if (!interaction.persona || typeof interaction.persona !== 'object' || Array.isArray(interaction.persona)) {
-      errors.push('interaction.persona must be an object');
-    } else {
-      requiredString(errors, 'interaction.persona.id', interaction.persona.id);
-      texts.push(interaction.persona.id ?? '', ...optionalStringArray(errors, 'interaction.persona.traits', interaction.persona.traits));
-    }
+  const persona = value as { id?: string; traits?: unknown };
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    errors.push(`${path} must be an object`);
+    return texts;
   }
+  requiredString(errors, `${path}.id`, persona.id);
+  const traits = optionalStringArray(errors, `${path}.traits`, persona.traits);
+  if (slotNames) validateStringArraySlotReferences(errors, `${path}.traits`, traits, slotNames);
+  texts.push(persona.id ?? '', ...traits);
+  return texts;
+};
 
-  const slots = interaction.slots;
+const validateInteractionSlots = (
+  errors: string[],
+  value: PartialInteraction
+): { slotNames: Set<string>; texts: string[] } => {
+  const texts: string[] = [];
+  const slots = value.slots;
   if (slots !== undefined && (!slots || typeof slots !== 'object' || Array.isArray(slots))) {
     errors.push('interaction.slots must be an object');
   }
@@ -186,12 +245,39 @@ const validateInteraction = (errors: string[], value: unknown): string[] => {
       }
     }
   }
+  return { slotNames, texts };
+};
+
+const validateInteractionCoverage = (errors: string[], value: PartialInteraction): void => {
+  const coverage = value.coverage;
+  if (coverage !== undefined) {
+    if (!coverage || typeof coverage !== 'object' || Array.isArray(coverage)) {
+      errors.push('interaction.coverage must be an object');
+    } else {
+      const parsedCoverage = coverage as Record<string, unknown>;
+      if (parsedCoverage.strategy !== 'seeded-pairwise') {
+        errors.push('interaction.coverage.strategy must be seeded-pairwise');
+      }
+      if (parsedCoverage.maxCases !== undefined && (!Number.isInteger(parsedCoverage.maxCases) || Number(parsedCoverage.maxCases) <= 0)) {
+        errors.push('interaction.coverage.maxCases must be a positive integer');
+      }
+    }
+  }
+};
+
+const validateGeneratedInteraction = (
+  errors: string[],
+  interaction: PartialInteraction,
+  slotNames: Set<string>
+): string[] => {
+  const texts: string[] = [];
+  texts.push(...validateInteractionPersona(errors, 'interaction.persona', interaction.persona, false));
 
   if (!Array.isArray(interaction.turns) || interaction.turns.length === 0) {
     errors.push('interaction.turns must be a non-empty array');
   }
   const turnIds = new Set<string>();
-  const turns = Array.isArray(interaction.turns) ? interaction.turns : [];
+  const turns = Array.isArray(interaction.turns) ? interaction.turns as Array<Record<string, unknown>> : [];
   for (const [index, turn] of turns.entries()) {
     if (!turn || typeof turn !== 'object' || Array.isArray(turn)) {
       errors.push(`interaction.turns[${index}] must be an object`);
@@ -206,36 +292,132 @@ const validateInteraction = (errors: string[], value: unknown): string[] => {
     if (turn.after !== undefined && turn.after !== 'channel-ready' && turn.after !== 'assistant-response') {
       errors.push(`interaction.turns[${index}].after must be channel-ready or assistant-response`);
     }
-    if (turn.delayMs !== undefined && (!Number.isInteger(turn.delayMs) || turn.delayMs < 0)) {
+    if (turn.delayMs !== undefined && (!Number.isInteger(turn.delayMs) || Number(turn.delayMs) < 0)) {
       errors.push(`interaction.turns[${index}].delayMs must be a non-negative integer`);
     }
-    if (!Array.isArray(turn.templates) || turn.templates.length === 0 || turn.templates.some((template) => typeof template !== 'string' || template.trim().length === 0)) {
+    if (!Array.isArray(turn.templates) || turn.templates.length === 0 || turn.templates.some((template: unknown) => typeof template !== 'string' || template.trim().length === 0)) {
       errors.push(`interaction.turns[${index}].templates must be a non-empty string array`);
       continue;
     }
-    texts.push(...turn.templates);
-    for (const template of turn.templates) {
-      for (const match of template.matchAll(slotTokenPattern)) {
-        const slotName = match[1];
-        if (!slotNames.has(slotName)) {
-          errors.push(`interaction.turns[${index}].templates references undeclared slot ${slotName}`);
+    const templates = turn.templates as string[];
+    texts.push(...templates);
+    for (const template of templates) validateSlotReferences(errors, `interaction.turns[${index}].templates`, template, slotNames);
+  }
+
+  return texts;
+};
+
+const validateAgenticInteraction = (
+  errors: string[],
+  interaction: PartialInteraction,
+  slotNames: Set<string>
+): string[] => {
+  const texts: string[] = [];
+  texts.push(...validateInteractionPersona(errors, 'interaction.persona', interaction.persona, true, slotNames));
+
+  const goal = interaction.goal;
+  if (!goal || typeof goal !== 'object' || Array.isArray(goal)) {
+    errors.push('interaction.goal must be an object');
+  } else {
+    const parsedGoal = goal as Record<string, unknown>;
+    requiredString(errors, 'interaction.goal.summary', parsedGoal.summary);
+    if (typeof parsedGoal.summary === 'string') validateSlotReferences(errors, 'interaction.goal.summary', parsedGoal.summary, slotNames);
+    texts.push(typeof parsedGoal.summary === 'string' ? parsedGoal.summary : '');
+    if (parsedGoal.facts !== undefined && (!parsedGoal.facts || typeof parsedGoal.facts !== 'object' || Array.isArray(parsedGoal.facts))) {
+      errors.push('interaction.goal.facts must be an object');
+    } else if (parsedGoal.facts && typeof parsedGoal.facts === 'object') {
+      for (const [name, value] of Object.entries(parsedGoal.facts)) {
+        if (!name.trim()) errors.push('interaction.goal.facts keys must be non-empty strings');
+        if (!['string', 'number', 'boolean'].includes(typeof value) && value !== null) {
+          errors.push(`interaction.goal.facts.${name} must be a string, number, boolean, or null`);
+        }
+        if (typeof value === 'string') {
+          validateSlotReferences(errors, `interaction.goal.facts.${name}`, value, slotNames);
+          texts.push(value);
         }
       }
     }
+    const acceptableAlternatives = optionalStringArray(errors, 'interaction.goal.acceptableAlternatives', parsedGoal.acceptableAlternatives);
+    validateStringArraySlotReferences(errors, 'interaction.goal.acceptableAlternatives', acceptableAlternatives, slotNames);
+    texts.push(...acceptableAlternatives);
+    const successCriteria = requiredStringArray(errors, 'interaction.goal.successCriteria', parsedGoal.successCriteria);
+    validateStringArraySlotReferences(errors, 'interaction.goal.successCriteria', successCriteria, slotNames);
+    texts.push(...successCriteria);
   }
 
-  if (interaction.coverage !== undefined) {
-    if (!interaction.coverage || typeof interaction.coverage !== 'object' || Array.isArray(interaction.coverage)) {
-      errors.push('interaction.coverage must be an object');
+  const knowledge = interaction.knowledge;
+  if (knowledge !== undefined) {
+    if (!knowledge || typeof knowledge !== 'object' || Array.isArray(knowledge)) {
+      errors.push('interaction.knowledge must be an object');
     } else {
-      if (interaction.coverage.strategy !== 'seeded-pairwise') {
-        errors.push('interaction.coverage.strategy must be seeded-pairwise');
-      }
-      if (interaction.coverage.maxCases !== undefined && (!Number.isInteger(interaction.coverage.maxCases) || interaction.coverage.maxCases <= 0)) {
-        errors.push('interaction.coverage.maxCases must be a positive integer');
-      }
+      const parsedKnowledge = knowledge as Record<string, unknown>;
+      const knownFacts = optionalStringArray(errors, 'interaction.knowledge.knownFacts', parsedKnowledge.knownFacts);
+      const unknownFacts = optionalStringArray(errors, 'interaction.knowledge.unknownFacts', parsedKnowledge.unknownFacts);
+      const disclosureRules = optionalStringArray(errors, 'interaction.knowledge.disclosureRules', parsedKnowledge.disclosureRules);
+      validateStringArraySlotReferences(errors, 'interaction.knowledge.knownFacts', knownFacts, slotNames);
+      validateStringArraySlotReferences(errors, 'interaction.knowledge.unknownFacts', unknownFacts, slotNames);
+      validateStringArraySlotReferences(errors, 'interaction.knowledge.disclosureRules', disclosureRules, slotNames);
+      texts.push(...knownFacts, ...unknownFacts, ...disclosureRules);
     }
   }
+
+  const policy = interaction.interventionPolicy;
+  if (!policy || typeof policy !== 'object' || Array.isArray(policy)) {
+    errors.push('interaction.interventionPolicy must be an object');
+  } else {
+    const parsedPolicy = policy as Record<string, unknown>;
+    if (!Array.isArray(parsedPolicy.triggers) || parsedPolicy.triggers.length === 0) {
+      errors.push('interaction.interventionPolicy.triggers must be a non-empty array');
+    } else {
+      for (const [index, trigger] of parsedPolicy.triggers.entries()) {
+        if (!allowedAgenticInterventionTriggers.has(trigger as PagodaAgenticInterventionTrigger)) {
+          errors.push(`interaction.interventionPolicy.triggers[${index}] contains unsupported trigger: ${String(trigger)}`);
+        }
+      }
+    }
+    if (parsedPolicy.patience !== undefined && !['low', 'medium', 'high'].includes(String(parsedPolicy.patience))) {
+      errors.push('interaction.interventionPolicy.patience must be low, medium, or high');
+    }
+  }
+
+  const termination = interaction.termination;
+  if (!termination || typeof termination !== 'object' || Array.isArray(termination)) {
+    errors.push('interaction.termination must be an object');
+  } else {
+    const parsedTermination = termination as Record<string, unknown>;
+    if (!Number.isInteger(parsedTermination.maxTurns) || Number(parsedTermination.maxTurns) <= 0) {
+      errors.push('interaction.termination.maxTurns must be a positive integer');
+    }
+    if (parsedTermination.maxDurationMs !== undefined && (!Number.isInteger(parsedTermination.maxDurationMs) || Number(parsedTermination.maxDurationMs) <= 0)) {
+      errors.push('interaction.termination.maxDurationMs must be a positive integer');
+    }
+    texts.push(...optionalStringArray(errors, 'interaction.termination.stopOn', parsedTermination.stopOn));
+  }
+
+  return texts;
+};
+
+const validateInteraction = (errors: string[], value: unknown): string[] => {
+  const texts: string[] = [];
+  if (value === undefined) return texts;
+  const interaction = value as PartialInteraction;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    errors.push('interaction must be an object');
+    return texts;
+  }
+
+  if (interaction.mode !== 'generated' && interaction.mode !== 'agentic') {
+    errors.push('interaction.mode must be generated or agentic');
+  }
+
+  const slots = validateInteractionSlots(errors, interaction);
+  texts.push(...slots.texts);
+  if (interaction.mode === 'generated') {
+    texts.push(...validateGeneratedInteraction(errors, interaction, slots.slotNames));
+  } else if (interaction.mode === 'agentic') {
+    texts.push(...validateAgenticInteraction(errors, interaction, slots.slotNames));
+  }
+  validateInteractionCoverage(errors, interaction);
 
   return texts;
 };

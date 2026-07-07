@@ -54,7 +54,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "test": "vitest run src --passWithNoTests",
+    "test": "yarn workspace @petitbon/pagoda-core build && yarn workspace @petitbon/pagoda-adapter-sdk build && yarn workspace @petitbon/pagoda-runner build && yarn test:unit",
+    "test:unit": "vitest run src --passWithNoTests",
     "pagoda": "node --import tsx src/index.ts"
   },
   "dependencies": {

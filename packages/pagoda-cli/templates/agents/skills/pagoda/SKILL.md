@@ -48,6 +48,7 @@ brew install pagoda
 - Harness-side transcription or screen/audio capture is useful for debugging, but should be fallback evidence only when the platform has no canonical transcript or observable evidence.
 - Live adapters should wait for channel readiness before sending the user turn. For phone, wait for the initial greeting or session-ready signal so synthetic caller audio does not collide with startup audio.
 - Live adapters should end sessions after collecting required evidence. Close chat sessions, send phone stop/end events, and include end status in metadata.
+- Interactive adapter methods may receive an abort signal. Honor it during startup, observation, caller-turn sending, and finish work, and keep cleanup idempotent so late-created sessions can be released after timeout.
 - Keep transport details separate from trust details. For webhook drivers, the URL used to POST may differ from the URL used for request signing or public verification; sign against the target service's configured public URL.
 - Adapters may discover local env files, ADC, or repo-local harness config to make local validation ergonomic, but must fail closed with a concrete setup error when required trusted config cannot be resolved.
 - Preserve useful raw platform observations in artifacts or metadata for debugging, but translate only trusted canonical evidence into oracle inputs.

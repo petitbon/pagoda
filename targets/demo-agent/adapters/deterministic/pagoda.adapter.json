@@ -7,6 +7,9 @@
   "channel": "browser-chat",
   "kind": "node",
   "entrypoint": "./index.ts",
+  "interactionModes": [
+    "generated"
+  ],
   "producesEvidenceCodes": [
     "DEMO_BROWSER_OUTPUT",
     "DEMO_COMMON_CONTEXT",

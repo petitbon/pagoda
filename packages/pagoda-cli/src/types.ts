@@ -1,4 +1,4 @@
-import type { PagodaEvidenceMap, PagodaOutcomeContract, PagodaScenario } from '@petitbon/pagoda-core';
+import type { PagodaCallerSession, PagodaEvidenceMap, PagodaOutcomeContract, PagodaScenario } from '@petitbon/pagoda-core';
 import type { PagodaAdapterManifest, PagodaTargetManifest } from '@petitbon/pagoda-adapter-sdk';
 import type { evaluatePagodaOutcomeContract } from '@petitbon/pagoda-core';
 
@@ -50,6 +50,10 @@ export type PagodaRunCliResult = {
   startedAt: string;
   completedAt: string;
   durationMs: number;
+  agentic?: {
+    completed: boolean;
+    stopReason: PagodaCallerSession['stopReason'];
+  };
   oracle: ReturnType<typeof evaluatePagodaOutcomeContract>;
 };
 

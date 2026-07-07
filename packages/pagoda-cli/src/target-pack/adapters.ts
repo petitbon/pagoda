@@ -49,6 +49,11 @@ export function validateAdapterManifest(targetId: string, adapter: LoadedAdapter
   if (manifest.targetId && manifest.targetId !== targetId) errors.push(`${adapter.path}: targetId must match ${targetId}`);
   if (manifest.kind !== 'node') errors.push(`${adapter.path}: kind must be node`);
   if (!manifest.entrypoint?.trim()) errors.push(`${adapter.path}: entrypoint must be non-empty`);
+  for (const [index, mode] of (manifest.interactionModes ?? []).entries()) {
+    if (mode !== 'generated' && mode !== 'agentic') {
+      errors.push(`${adapter.path}: interactionModes[${index}] must be generated or agentic`);
+    }
+  }
   if (manifest.entrypoint && !existsSync(join(adapter.root, manifest.entrypoint))) {
     errors.push(`${adapter.path}: entrypoint ${manifest.entrypoint} does not exist`);
   }

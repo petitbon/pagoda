@@ -7,6 +7,7 @@ export type PagodaAdapterManifest = {
   channel?: string;
   kind: 'node';
   entrypoint: string;
+  interactionModes?: readonly ('generated' | 'agentic')[];
   producesEvidenceCodes?: readonly string[];
   requiresEnv?: readonly string[];
 };

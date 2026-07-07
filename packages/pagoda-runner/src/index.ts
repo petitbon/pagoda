@@ -1,4 +1,8 @@
 export { checkAdapterHealth } from './adapter-health.js';
+export { runPagodaAgenticCallerSession, startAndRunPagodaAgenticCallerSession } from './agentic/session-runner.js';
+export type { PagodaAgenticLifecycleRunResult, PagodaAgenticSessionRunResult } from './agentic/session-runner.js';
+export { DeterministicCallerAgentProvider } from './caller-agent.js';
+export type { PagodaCallerAgentProvider, PagodaCallerDecisionInput } from './caller-agent.js';
 export { createPagodaRunPlan } from './run-plan.js';
 export type { PagodaRunnerEvent } from './run-plan.js';
 export { artifactSafeSegment, buildRunArtifactDirectory } from './artifacts/paths.js';

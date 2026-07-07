@@ -30,8 +30,8 @@ export async function createScenarioBundle(context: PagodaRootContext, args: rea
   const domain = argValue(args, '--domain', 'product') ?? 'product';
   const risk = argValue(args, '--risk', 'medium') ?? 'medium';
   const interaction = argValue(args, '--interaction', 'generated') ?? 'generated';
-  if (interaction !== 'none' && interaction !== 'generated') {
-    throw new Error('pagoda scenario create --interaction must be none or generated.');
+  if (interaction !== 'none' && interaction !== 'generated' && interaction !== 'agentic') {
+    throw new Error('pagoda scenario create --interaction must be none, generated, or agentic.');
   }
   const existingScenarios = await loadScenarios(root, manifest);
   if (existingScenarios.some((entry) => entry.scenario.id === scenarioId)) throw new Error(`${context.targetId}: scenario ${scenarioId} already exists.`);

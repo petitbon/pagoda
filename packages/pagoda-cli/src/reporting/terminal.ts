@@ -20,8 +20,12 @@ const yellow = (text: string): string => color(text, 33);
 const gray = (text: string): string => color(text, 90);
 const bold = (text: string): string => color(text, 1);
 
-const statusMarker = (status: string): string => {
-  if (status === 'PASS') return green('✓');
+const isSuccessfulRun = (run: PagodaRunCliResult): boolean =>
+  run.oracle.status === 'PASS' && run.agentic?.completed !== false;
+
+const statusMarker = (run: PagodaRunCliResult): string => {
+  if (isSuccessfulRun(run)) return green('✓');
+  const status = run.oracle.status;
   if (status === 'FAIL') return red('×');
   if (status === 'OBSERVABILITY_FAILED') return yellow('!');
   return red('!');
@@ -43,7 +47,7 @@ const formatRunLine = (run: PagodaRunCliResult, context: PagodaRootContext): str
   const clauseWord = clauses.total === 1 ? 'clause' : 'clauses';
   const caseText = run.interactionCaseId ? ` ${gray(run.interactionCaseId)}` : '';
   return [
-    ` ${statusMarker(run.oracle.status)} ${run.scenarioId}${caseText}`,
+    ` ${statusMarker(run)} ${run.scenarioId}${caseText}`,
     `(${clauses.passed}/${clauses.total} ${clauseWord}, ${run.evidence.accepted} accepted evidence)`,
     formatDuration(run.durationMs),
     gray(`adapter ${run.adapterRunStatus}`),
@@ -52,10 +56,14 @@ const formatRunLine = (run: PagodaRunCliResult, context: PagodaRootContext): str
 };
 
 const formatRunDetails = (run: PagodaRunCliResult): string[] => {
-  if (run.oracle.status === 'PASS') return [];
+  const agenticFailure = run.agentic?.completed === false
+    ? [`  Agentic session did not complete: ${run.agentic.stopReason}`]
+    : [];
+  if (run.oracle.status === 'PASS') return agenticFailure;
   const missingClauses = run.oracle.clauses.filter((clause) => clause.status === 'MISSING');
   const failedClauses = run.oracle.clauses.filter((clause) => clause.status === 'FAILED');
   return [
+    ...agenticFailure,
     ...run.oracle.classificationReasons.map((reason) => `  Reason: ${reason}`),
     run.interactionCaseId ? `  Interaction case: ${run.interactionCaseId}` : null,
     ...missingClauses.map((clause) => `  MISSING: ${clause.clause}`),
@@ -97,7 +105,7 @@ export function formatRunResult(run: PagodaRunCliResult, context: PagodaRootCont
     formatRunLine(run, context),
     ...formatRunDetails(run),
     '',
-    `   Scenarios  ${run.oracle.status === 'PASS' ? green('1 passed') : red('1 failed')} (1)`,
+    `   Scenarios  ${isSuccessfulRun(run) ? green('1 passed') : red('1 failed')} (1)`,
     `      Clauses  ${green(`${clauses.passed} passed`)}${clauses.failed ? ` | ${red(`${clauses.failed} failed`)}` : ''}${clauses.missing ? ` | ${yellow(`${clauses.missing} missing`)}` : ''} (${clauses.total})`,
     formatEvidenceSummary(run),
     `   Start at  ${run.startedAt}`,

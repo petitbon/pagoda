@@ -34,12 +34,25 @@ yarn workspace @petitbon/pagoda-adapter-sdk test
 - target manifest types;
 - target health types;
 - run plan and target run result types;
-- `PagodaTargetAdapter` lifecycle contract.
+- `PagodaTargetAdapter` lifecycle contract;
+- optional `PagodaInteractiveTargetAdapter` contract for agentic caller runs.
 
 Adapters translate ordinary platform APIs, logs, traces, events, and facts into
 canonical Pagoda evidence observations. Target platforms remain Pagoda-agnostic.
-When a run plan includes `run.interaction`, adapters use those materialized
-turns to drive the target channel and still return trusted canonical evidence.
+When a run plan includes `run.interaction`, adapters use the materialized
+interaction to drive the target channel and still return trusted canonical
+evidence. Adapters must declare `interactionModes: ["agentic"]` before Pagoda
+will route agentic scenarios to them.
+
+Interactive adapter methods receive an optional operation options object with an
+`AbortSignal`. Live adapters should cancel pending startup, observation, caller
+turn, and finish work when the signal is aborted. Cleanup should be idempotent so
+Pagoda can release a late-created interactive session after a timeout.
+
+`observeTarget` and `sendCallerTurn` should return only newly observed target
+turns for efficiency. Pagoda also tolerates full transcript snapshots by deduping
+target turns by stable `PagodaTargetTurn.id`; adapters must emit a new id if the
+target produces materially revised text.
 
 ## Standalone Adapters
 

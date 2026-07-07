@@ -83,6 +83,81 @@ const interaction = {
   coverage: { strategy: 'seeded-pairwise' }
 } satisfies PagodaInteractionSpec;
 
+const agenticInteraction = {
+  mode: 'agentic',
+  persona: {
+    id: 'booking-caller',
+    traits: ['natural', 'specific']
+  },
+  slots: {
+    flexibility: { values: ['strict', 'nearby'] }
+  },
+  goal: {
+    summary: 'Book a barber haircut with Norman tomorrow around 2 PM.',
+    facts: {
+      service: 'barber haircut',
+      staff: 'Norman'
+    },
+    acceptableAlternatives: ['Norman within one hour of 2 PM.'],
+    successCriteria: ['A bookable option is explicitly offered.', 'The option uses Norman.']
+  },
+  knowledge: {
+    knownFacts: ['The caller wants Norman.'],
+    unknownFacts: ['The caller does not know backend availability.'],
+    disclosureRules: ['Only accept explicit bookable options.']
+  },
+  interventionPolicy: {
+    triggers: ['answer-question', 'ask-clarification', 'correct-wrong-staff', 'accept-valid-option', 'verify-confirmation'],
+    patience: 'medium'
+  },
+  termination: {
+    maxTurns: 6,
+    maxDurationMs: 90000,
+    stopOn: ['goal-satisfied']
+  },
+  coverage: { strategy: 'seeded-pairwise' }
+} satisfies PagodaInteractionSpec;
+
+const slottedAgenticInteraction = {
+  mode: 'agentic',
+  persona: {
+    id: 'booking-caller',
+    traits: ['{flexibility}', 'natural']
+  },
+  slots: {
+    flexibility: { values: ['strict', 'nearby'] },
+    maxDistance: { values: [15] },
+    optionalNote: { values: [null] },
+    remote: { values: [false] },
+    service: { values: ['barber haircut', 'beard trim'] }
+  },
+  goal: {
+    summary: 'Book a {flexibility} {service}.',
+    facts: {
+      service: '{service}',
+      remote: false,
+      maxDistance: 15,
+      optionalNote: null
+    },
+    acceptableAlternatives: ['{service} within {maxDistance} minutes.'],
+    successCriteria: ['The target offers a {flexibility} {service}.']
+  },
+  knowledge: {
+    knownFacts: ['The caller wants a {service}.'],
+    unknownFacts: ['The caller does not know whether remote is {remote}.'],
+    disclosureRules: ['Treat {optionalNote} as unavailable unless the target asks.']
+  },
+  interventionPolicy: {
+    triggers: ['answer-question', 'ask-clarification', 'accept-valid-option'],
+    patience: 'medium'
+  },
+  termination: {
+    maxTurns: 6,
+    maxDurationMs: 90000
+  },
+  coverage: { strategy: 'seeded-pairwise' }
+} satisfies PagodaInteractionSpec;
+
 const scenarioWithInteraction = (): PagodaScenario => ({
   schemaVersion: 'pagoda.scenario',
   id: 'PGD-CORE-INTERACTION-001',
@@ -224,6 +299,128 @@ describe('@petitbon/pagoda-core', () => {
     }).errors).toEqual(expect.arrayContaining([
       'interaction.slots must be an object',
       'interaction.turns must be a non-empty array'
+    ]));
+  });
+
+  it('validates and materializes agentic interaction specs', () => {
+    const scenario = { ...scenarioWithInteraction(), interaction: agenticInteraction };
+    expect(validatePagodaScenario(scenario).errors).toEqual([]);
+    const materialized = materializePagodaInteraction({
+      scenarioId: scenario.id,
+      channel: 'browser-chat',
+      seed: 'fixed',
+      interaction: agenticInteraction,
+      caseSelector: 'case-001'
+    });
+    expect(materialized).toMatchObject({
+      mode: 'agentic',
+      caseId: 'case-001',
+      persona: { id: 'booking-caller' },
+      goal: { summary: 'Book a barber haircut with Norman tomorrow around 2 PM.' },
+      interventionPolicy: {
+        triggers: expect.arrayContaining(['ask-clarification', 'correct-wrong-staff'])
+      }
+    });
+  });
+
+  it('renders selected slots into agentic caller-plan strings', () => {
+    const scenario = { ...scenarioWithInteraction(), interaction: slottedAgenticInteraction };
+    expect(validatePagodaScenario(scenario).errors).toEqual([]);
+    const materialized = materializePagodaInteraction({
+      scenarioId: scenario.id,
+      channel: 'browser-chat',
+      seed: 'fixed',
+      interaction: slottedAgenticInteraction,
+      caseSelector: 'case-001'
+    });
+    if (materialized.mode !== 'agentic') throw new Error('expected agentic materialization');
+    const service = String(materialized.slots.service);
+    const flexibility = String(materialized.slots.flexibility);
+    expect(materialized.persona).toEqual({
+      id: 'booking-caller',
+      traits: [flexibility, 'natural']
+    });
+    expect(materialized.goal.summary).toBe(`Book a ${flexibility} ${service}.`);
+    expect(materialized.goal.facts).toMatchObject({
+      service,
+      remote: false,
+      maxDistance: 15,
+      optionalNote: null
+    });
+    expect(materialized.goal.acceptableAlternatives).toEqual([`${service} within 15 minutes.`]);
+    expect(materialized.goal.successCriteria).toEqual([`The target offers a ${flexibility} ${service}.`]);
+    expect(materialized.knowledge).toEqual({
+      knownFacts: [`The caller wants a ${service}.`],
+      unknownFacts: ['The caller does not know whether remote is false.'],
+      disclosureRules: ['Treat null as unavailable unless the target asks.']
+    });
+
+    const cases = listPagodaInteractionCases({
+      scenarioId: scenario.id,
+      channel: 'browser-chat',
+      seed: 'fixed',
+      interaction: slottedAgenticInteraction
+    });
+    const summaries = cases.map((item) => {
+      if (item.mode !== 'agentic') throw new Error('expected agentic materialization');
+      return item.goal.summary;
+    });
+    expect(new Set(summaries).size).toBeGreaterThan(1);
+  });
+
+  it('rejects incomplete agentic interaction specs', () => {
+    const scenario = {
+      ...scenarioWithInteraction(),
+      interaction: {
+        ...agenticInteraction,
+        goal: { summary: '', successCriteria: [] },
+        interventionPolicy: { triggers: ['unsupported-trigger'] },
+        termination: { maxTurns: 0 }
+      }
+    };
+    expect(validatePagodaScenario(scenario).errors).toEqual(expect.arrayContaining([
+      'interaction.goal.summary must be a non-empty string',
+      'interaction.goal.successCriteria must be a non-empty string array',
+      'interaction.interventionPolicy.triggers[0] contains unsupported trigger: unsupported-trigger',
+      'interaction.termination.maxTurns must be a positive integer'
+    ]));
+  });
+
+  it('rejects undeclared slot references in agentic renderable fields', () => {
+    const scenario = {
+      ...scenarioWithInteraction(),
+      interaction: {
+        ...slottedAgenticInteraction,
+        persona: {
+          id: 'booking-caller',
+          traits: ['{missingTrait}']
+        },
+        goal: {
+          ...slottedAgenticInteraction.goal,
+          summary: 'Book a {missingSummary}.',
+          facts: {
+            service: '{missingFact}',
+            remote: false
+          },
+          acceptableAlternatives: ['Offer {missingAlternative}.'],
+          successCriteria: ['Complete {missingCriterion}.']
+        },
+        knowledge: {
+          knownFacts: ['Known {missingKnown}.'],
+          unknownFacts: ['Unknown {missingUnknown}.'],
+          disclosureRules: ['Rule {missingRule}.']
+        }
+      }
+    };
+    expect(validatePagodaScenario(scenario).errors).toEqual(expect.arrayContaining([
+      'interaction.persona.traits[0] references undeclared slot missingTrait',
+      'interaction.goal.summary references undeclared slot missingSummary',
+      'interaction.goal.facts.service references undeclared slot missingFact',
+      'interaction.goal.acceptableAlternatives[0] references undeclared slot missingAlternative',
+      'interaction.goal.successCriteria[0] references undeclared slot missingCriterion',
+      'interaction.knowledge.knownFacts[0] references undeclared slot missingKnown',
+      'interaction.knowledge.unknownFacts[0] references undeclared slot missingUnknown',
+      'interaction.knowledge.disclosureRules[0] references undeclared slot missingRule'
     ]));
   });
 

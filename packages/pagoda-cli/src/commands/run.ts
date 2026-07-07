@@ -2,22 +2,34 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import {
+  canonicalEvidenceObservation,
   evaluatePagodaOutcomeContract,
   listPagodaInteractionCases,
   materializePagodaInteraction,
+  type PagodaCallerSession,
   type PagodaEvidenceMap,
   type PagodaMaterializedInteraction,
   type PagodaOutcomeContract,
   type PagodaScenario
 } from '@petitbon/pagoda-core';
-import type { PagodaTargetAdapter, PagodaTargetManifest } from '@petitbon/pagoda-adapter-sdk';
+import type {
+  PagodaInteractiveTargetAdapter,
+  PagodaTargetAdapter,
+  PagodaTargetManifest,
+  PreparedRun,
+  TargetRunResult
+} from '@petitbon/pagoda-adapter-sdk';
 import {
   buildRunArtifactDirectory,
   createPagodaRunPlan,
+  startAndRunPagodaAgenticCallerSession,
   writeRunArtifactBundle
 } from '@petitbon/pagoda-runner';
 import type { PagodaCliIo, PagodaCliReporter, PagodaCommandResult, PagodaRootContext, PagodaRunCliResult, PagodaRunCliSummary } from '../types.js';
-import { missingAdapterEvidenceCapabilities } from '../target-pack/capabilities.js';
+import {
+  missingAdapterEvidenceCapabilities,
+  missingAdapterInteractionCapabilities
+} from '../target-pack/capabilities.js';
 import { loadTargetAdapter } from '../target-pack/adapters.js';
 import { loadContracts, loadEvidenceMaps, loadScenarios } from '../target-pack/files.js';
 import { loadTargetManifest } from '../target-pack/manifests.js';
@@ -27,6 +39,12 @@ import {
   formatRunSummaryFooter,
   formatRunSummaryHeader
 } from '../reporting/terminal.js';
+
+const isSuccessfulRun = (run: PagodaRunCliResult): boolean =>
+  run.oracle.status === 'PASS' && run.agentic?.completed !== false;
+
+const isSyntheticAgenticFailureResult = (result: TargetRunResult): boolean =>
+  result.status === 'failed' && typeof result.metadata?.agenticStopReason === 'string';
 
 export async function runTargetScenario(input: {
   context: PagodaRootContext;
@@ -104,6 +122,13 @@ export async function runTargetScenario(input: {
         'Update the adapter pagoda.adapter.json producesEvidenceCodes or choose a different adapter.'
       ].join('\n'));
     }
+    const missingInteractionModes = missingAdapterInteractionCapabilities(loadedAdapter.manifest, scenario);
+    if (missingInteractionModes.length > 0) {
+      throw new Error([
+        `${context.targetId}: adapter ${loadedAdapter.adapterId} cannot run ${selectedScenarioId} with ${missingInteractionModes.join(', ')} interaction.`,
+        'Update the adapter pagoda.adapter.json interactionModes or choose an interactive adapter.'
+      ].join('\n'));
+    }
 
     return runLoadedTargetScenario({
       context,
@@ -146,7 +171,7 @@ export async function runTargetScenario(input: {
       runs.push(run);
       if (input.reporter !== 'json') input.io.stdout(formatRunProgress(run, context));
     }
-    const passed = runs.filter((run) => run.oracle.status === 'PASS').length;
+    const passed = runs.filter(isSuccessfulRun).length;
     const failed = runs.length - passed;
     const summary: PagodaRunCliSummary = {
       projectId: context.targetId,
@@ -181,7 +206,7 @@ export async function runTargetScenario(input: {
     const job = runnableJobs[0];
     const run = await runOne(job.scenarioId, job.channel, job.interaction);
     input.io.stdout(input.reporter === 'json' ? JSON.stringify(run, null, 2) : formatRunResult(run, context));
-    return { exitCode: run.oracle.status === 'PASS' ? 0 : 1 };
+    return { exitCode: isSuccessfulRun(run) ? 0 : 1 };
   }
 
   const summaryStartedAt = new Date().toISOString();
@@ -195,7 +220,7 @@ export async function runTargetScenario(input: {
     runs.push(run);
     if (input.reporter !== 'json') input.io.stdout(formatRunProgress(run, context));
   }
-  const passed = runs.filter((run) => run.oracle.status === 'PASS').length;
+  const passed = runs.filter(isSuccessfulRun).length;
   const failed = runs.length - passed;
   const summary: PagodaRunCliSummary = {
     projectId: context.targetId,
@@ -254,10 +279,18 @@ async function runLoadedTargetScenario(input: {
     seed: input.interaction?.seed ?? input.seed,
     interaction: input.interaction
   });
-  const prepared = await adapter.prepare(plan);
-  try {
-    const result = await adapter.execute(prepared);
-    const observations = await adapter.collectObservations(result);
+  const finishRun = async (result: TargetRunResult, callerSession?: PagodaCallerSession): Promise<PagodaRunCliResult> => {
+    const observations = await adapter.collectObservations(result).catch((error: unknown) => {
+      if (!callerSession || !isSyntheticAgenticFailureResult(result)) throw error;
+      return canonicalEvidenceObservation({
+        collectorStatus: 'SETUP_FAILED',
+        evidenceRefsByCode: {
+          AGENTIC_SESSION_FAILED: [
+            error instanceof Error ? error.message : 'adapter could not collect observations for failed agentic session'
+          ]
+        }
+      });
+    });
     const evaluation = evaluatePagodaOutcomeContract({
       contract,
       channel: selectedChannel as never,
@@ -283,10 +316,17 @@ async function runLoadedTargetScenario(input: {
       canonicalObservation: observations,
       oracleResult: evaluation,
       rawObservations,
+      callerSession,
       logs: { stdout: result.stdout, stderr: result.stderr },
       startedAt,
       completedAt
     });
+    const agentic = callerSession
+      ? {
+          completed: callerSession.stopReason === 'completed',
+          stopReason: callerSession.stopReason
+        }
+      : undefined;
     return {
       runId: plan.runId,
       artifactDirectory,
@@ -305,9 +345,38 @@ async function runLoadedTargetScenario(input: {
       startedAt,
       completedAt,
       durationMs: Date.now() - startedMs,
+      ...(agentic ? { agentic } : {}),
       oracle: evaluation
     };
+  };
+
+  let prepared: PreparedRun | undefined;
+  try {
+    if (plan.interaction?.mode === 'agentic') {
+      if (!isInteractiveTargetAdapter(adapter)) {
+        throw new Error(`${context.targetId}: selected adapter declares agentic interaction but does not implement PagodaInteractiveTargetAdapter.`);
+      }
+      const agentic = await startAndRunPagodaAgenticCallerSession({
+        adapter,
+        run: plan,
+        interaction: plan.interaction,
+        startedAt
+      });
+      prepared = agentic.prepared;
+      return finishRun(agentic.result, agentic.callerSession);
+    }
+
+    prepared = await adapter.prepare(plan);
+    return finishRun(await adapter.execute(prepared));
   } finally {
-    await adapter.cleanup?.(prepared);
+    if (prepared) await adapter.cleanup?.(prepared);
   }
+}
+
+function isInteractiveTargetAdapter(adapter: PagodaTargetAdapter): adapter is PagodaInteractiveTargetAdapter {
+  const candidate = adapter as Partial<PagodaInteractiveTargetAdapter>;
+  return typeof candidate.startInteractive === 'function'
+    && typeof candidate.observeTarget === 'function'
+    && typeof candidate.sendCallerTurn === 'function'
+    && typeof candidate.finishInteractive === 'function';
 }

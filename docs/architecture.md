@@ -29,7 +29,10 @@ packs contain platform-specific scenarios, fixtures, adapters, and traces.
 3. `pagoda run` loads a target adapter and checks that its manifest can
    produce the scenario's required evidence codes.
 4. The runner creates a run plan.
-5. The adapter prepares and executes the target scenario.
+5. The adapter prepares and executes the target scenario. For generated
+   interaction this means deterministic user turns; for agentic interaction it
+   means a materialized caller plan and, when supported, an interactive caller
+   session.
 6. The adapter returns canonical evidence observations.
 7. The core oracle compares observations to the outcome contract.
 8. The runner writes a reproducible artifact bundle.
@@ -88,6 +91,10 @@ This layout is used by the bundled demo target and by framework contributors.
 - The target adapter collects evidence; it does not decide pass or fail.
 - Adapter manifests declare evidence capabilities; Pagoda checks them before
   driving the target.
+- Adapter manifests declare supported interaction modes. Existing adapters are
+  generated-only unless they opt into `agentic`.
+- Agentic caller turns are execution input and artifact context; trusted
+  observations still come from adapters and the oracle remains deterministic.
 - The oracle decides status; it does not call target systems.
 - Outcome contracts are generated; scenarios and evidence maps are the source
   of truth.
