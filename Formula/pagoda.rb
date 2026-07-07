@@ -1,9 +1,9 @@
 class Pagoda < Formula
   desc "Target-agnostic validation framework for agentic software"
   homepage "https://github.com/petitbon/pagoda"
-  url "https://github.com/petitbon/pagoda/releases/download/v0.2.1/pagoda-cli-standalone.tgz"
-  version "0.2.1"
-  sha256 "8b9abb7f562a13ab4464ab5a9c035d9f763844883090db45b2f4ac835575034e"
+  url "https://github.com/petitbon/pagoda/releases/download/v0.2.2/pagoda-cli-standalone.tgz"
+  version "0.2.2"
+  sha256 "d8f5cbe683d8e0f30a8a5fd6110a897f5ca5eb53d37896d6bd473cc82cf5d3c8"
   license "Apache-2.0"
 
   depends_on "node"
