@@ -1,6 +1,7 @@
 import type { PagodaCallerSession, PagodaEvidenceMap, PagodaOutcomeContract, PagodaScenario } from '@petitbon/pagoda-core';
 import type { PagodaAdapterManifest, PagodaTargetManifest } from '@petitbon/pagoda-adapter-sdk';
 import type { evaluatePagodaOutcomeContract } from '@petitbon/pagoda-core';
+import type { PagodaAdapterFailureDiagnostic } from '@petitbon/pagoda-runner';
 
 export type LoadedScenario = { path: string; scenario: PagodaScenario; hash: string };
 export type LoadedEvidenceMap = { path: string; evidenceMap: PagodaEvidenceMap; hash: string };
@@ -54,6 +55,7 @@ export type PagodaRunCliResult = {
     completed: boolean;
     stopReason: PagodaCallerSession['stopReason'];
   };
+  adapterFailure?: PagodaAdapterFailureDiagnostic;
   oracle: ReturnType<typeof evaluatePagodaOutcomeContract>;
 };
 

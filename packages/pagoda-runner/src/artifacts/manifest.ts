@@ -1,5 +1,12 @@
 import type { PagodaCallerSession, PagodaEvidenceScenarioStatus } from '@petitbon/pagoda-core';
 
+export type PagodaAdapterFailureDiagnostic = {
+  phase: 'healthCheck' | 'prepare' | 'startInteractive' | 'observeTarget' | 'sendCallerTurn' | 'finishInteractive' | 'execute' | 'collectObservations';
+  category: 'configuration' | 'dependency' | 'timeout' | 'setup' | 'observability' | 'unknown';
+  dependency?: string;
+  message: string;
+};
+
 export type PagodaRunArtifactManifest = {
   schemaVersion: 'pagoda.run-artifact';
   runId: string;
@@ -15,6 +22,7 @@ export type PagodaRunArtifactManifest = {
     completed: boolean;
     stopReason: PagodaCallerSession['stopReason'];
   };
+  adapterFailure?: PagodaAdapterFailureDiagnostic;
   startedAt: string;
   completedAt: string;
   files: Record<string, string>;

@@ -307,7 +307,7 @@ describe('@petitbon/pagoda-cli', () => {
         await main(['compile', '--root', root]);
       });
       const logs = await captureLogs(async () => {
-        await main(['run', '--root', root, '--channel', 'browser-chat', '--reporter', 'json']);
+        await main(['run', '--root', root, '--channel', 'browser-chat', '--concurrency', '2', '--reporter', 'json']);
       });
       const summary = JSON.parse(logs.join('\n')) as {
         projectId: string;
@@ -339,6 +339,95 @@ describe('@petitbon/pagoda-cli', () => {
       expect(reporterLogs.join('\n')).toContain('(4/4 clauses, 4 accepted evidence)');
       expect(reporterLogs[reporterLogs.length - 1]).toContain('Scenarios  2 passed (2)');
       expect(reporterLogs[reporterLogs.length - 1]).toContain('Evidence  8 accepted | 0 rejected | 2 setup');
+    });
+  });
+
+  it('reports adapter failure diagnostics in json, terminal output, and artifacts', async () => {
+    await withTempDir(async (directory) => {
+      const root = join(directory, 'sample-agent', '.pagoda');
+      await captureLogs(async () => {
+        await main(['init', '--root', root, '--name', 'Sample Agent']);
+      });
+
+      await writeFile(join(root, 'adapters/sample-agent-local/index.mjs'), `
+const runs = new Map();
+
+const adapter = {
+  targetId: 'sample-agent',
+  async healthCheck() {
+    return { status: 'ready', message: 'diagnostic adapter ready', evidenceSources: ['transcript'] };
+  },
+  async prepare(run) {
+    runs.set(run.runId, run);
+    return { runId: run.runId, targetId: run.targetId, artifactDirectory: run.artifactDirectory };
+  },
+  async execute(prepared) {
+    return {
+      runId: prepared.runId,
+      status: 'failed',
+      stdout: '',
+      stderr: 'create browser chat session failed with HTTP 502: Session Ledger request failed',
+      exitCode: 1,
+      metadata: {
+        adapterFailure: {
+          phase: 'execute',
+          category: 'dependency',
+          dependency: 'session-ledger',
+          message: 'Session Ledger request failed: 500 Internal Server Error'
+        }
+      }
+    };
+  },
+  async collectObservations() {
+    return {
+      acceptedEvidenceCodes: [],
+      rejectedEvidenceCodes: [],
+      repairCodes: [],
+      observedTraceSources: [],
+      observedCorrelation: [],
+      forbiddenToolNames: [],
+      forbiddenEvents: [],
+      forbiddenClaims: [],
+      setupEvidenceCodes: [],
+      evidenceRefsByCode: {},
+      collectorStatus: 'SETUP_FAILED'
+    };
+  },
+  async cleanup(prepared) {
+    runs.delete(prepared.runId);
+  }
+};
+
+export default adapter;
+`, 'utf8');
+
+      const jsonLogs = await captureLogs(async () => {
+        const result = await main(['run', '--root', root, '--scenario', 'SAMPLE-AGENT-SAFE-PROPOSAL-001', '--channel', 'browser-chat', '--reporter', 'json']);
+        expect(result.exitCode).toBe(1);
+      });
+      const run = JSON.parse(jsonLogs.join('\n')) as {
+        artifactDirectory: string;
+        adapterFailure: { phase: string; category: string; dependency: string; message: string };
+        oracle: { status: string };
+      };
+      expect(run.oracle.status).toBe('SETUP_FAILED');
+      expect(run.adapterFailure).toMatchObject({
+        phase: 'execute',
+        category: 'dependency',
+        dependency: 'session-ledger',
+        message: 'Session Ledger request failed: 500 Internal Server Error'
+      });
+
+      const manifest = JSON.parse(await readFile(join(run.artifactDirectory, 'run.json'), 'utf8'));
+      expect(manifest.adapterFailure).toMatchObject(run.adapterFailure);
+      const report = await readFile(join(run.artifactDirectory, 'report.md'), 'utf8');
+      expect(report).toContain('- Adapter Failure: execute category=dependency dependency=session-ledger - Session Ledger request failed: 500 Internal Server Error');
+
+      const terminalLogs = await captureLogs(async () => {
+        const result = await main(['run', '--root', root, '--scenario', 'SAMPLE-AGENT-SAFE-PROPOSAL-001', '--channel', 'browser-chat']);
+        expect(result.exitCode).toBe(1);
+      });
+      expect(terminalLogs.join('\n')).toContain('Adapter: execute  category=dependency  dependency=session-ledger  Session Ledger request failed: 500 Internal Server Error');
     });
   });
 

@@ -9,4 +9,4 @@ export { artifactSafeSegment, buildRunArtifactDirectory } from './artifacts/path
 export { readRunArtifactBundle } from './artifacts/reader.js';
 export { renderRunReport } from './reports/markdown.js';
 export { writeRunArtifactBundle } from './artifacts/writer.js';
-export type { PagodaRunArtifactManifest } from './artifacts/manifest.js';
+export type { PagodaAdapterFailureDiagnostic, PagodaRunArtifactManifest } from './artifacts/manifest.js';

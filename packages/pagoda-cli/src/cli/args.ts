@@ -17,3 +17,11 @@ export function runReporter(args: readonly string[]): PagodaCliReporter {
   if (value === 'default' || value === 'json') return value;
   throw new Error(`Unsupported reporter ${value}. Expected default or json.`);
 }
+
+export function positiveIntegerArg(args: readonly string[], name: string, fallback: number): number {
+  const value = argValue(args, name);
+  if (value === undefined) return fallback;
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isInteger(parsed) && parsed > 0 && String(parsed) === value.trim()) return parsed;
+  throw new Error(`${name} must be a positive integer.`);
+}

@@ -59,11 +59,22 @@ const formatRunDetails = (run: PagodaRunCliResult): string[] => {
   const agenticFailure = run.agentic?.completed === false
     ? [`  Agentic session did not complete: ${run.agentic.stopReason}`]
     : [];
+  const adapterFailure = run.adapterFailure
+    ? [
+        [
+          `  Adapter: ${run.adapterFailure.phase}`,
+          `category=${run.adapterFailure.category}`,
+          run.adapterFailure.dependency ? `dependency=${run.adapterFailure.dependency}` : null,
+          run.adapterFailure.message
+        ].filter((part): part is string => part !== null).join('  ')
+      ]
+    : [];
   if (run.oracle.status === 'PASS') return agenticFailure;
   const missingClauses = run.oracle.clauses.filter((clause) => clause.status === 'MISSING');
   const failedClauses = run.oracle.clauses.filter((clause) => clause.status === 'FAILED');
   return [
     ...agenticFailure,
+    ...adapterFailure,
     ...run.oracle.classificationReasons.map((reason) => `  Reason: ${reason}`),
     run.interactionCaseId ? `  Interaction case: ${run.interactionCaseId}` : null,
     ...missingClauses.map((clause) => `  MISSING: ${clause.clause}`),

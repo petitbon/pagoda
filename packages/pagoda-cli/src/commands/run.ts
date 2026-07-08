@@ -23,7 +23,8 @@ import {
   buildRunArtifactDirectory,
   createPagodaRunPlan,
   startAndRunPagodaAgenticCallerSession,
-  writeRunArtifactBundle
+  writeRunArtifactBundle,
+  type PagodaAdapterFailureDiagnostic
 } from '@petitbon/pagoda-runner';
 import type { PagodaCliIo, PagodaCliReporter, PagodaCommandResult, PagodaRootContext, PagodaRunCliResult, PagodaRunCliSummary } from '../types.js';
 import {
@@ -46,6 +47,124 @@ const isSuccessfulRun = (run: PagodaRunCliResult): boolean =>
 const isSyntheticAgenticFailureResult = (result: TargetRunResult): boolean =>
   result.status === 'failed' && typeof result.metadata?.agenticStopReason === 'string';
 
+const adapterFailurePhases = new Set<PagodaAdapterFailureDiagnostic['phase']>([
+  'healthCheck',
+  'prepare',
+  'startInteractive',
+  'observeTarget',
+  'sendCallerTurn',
+  'finishInteractive',
+  'execute',
+  'collectObservations'
+]);
+
+const adapterFailureCategories = new Set<PagodaAdapterFailureDiagnostic['category']>([
+  'configuration',
+  'dependency',
+  'timeout',
+  'setup',
+  'observability',
+  'unknown'
+]);
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const cleanDiagnosticMessage = (message: string): string => {
+  const singleLine = message.replace(/\s+/g, ' ').trim();
+  return singleLine.length > 300 ? `${singleLine.slice(0, 297)}...` : singleLine;
+};
+
+const stringFromMetadata = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+
+const explicitAdapterFailureFromMetadata = (metadata: TargetRunResult['metadata']): PagodaAdapterFailureDiagnostic | undefined => {
+  const candidate = isRecord(metadata?.adapterFailure) ? metadata.adapterFailure : null;
+  if (!candidate) return undefined;
+  const phase = stringFromMetadata(candidate.phase);
+  const category = stringFromMetadata(candidate.category);
+  const message = stringFromMetadata(candidate.message);
+  if (!phase || !adapterFailurePhases.has(phase as PagodaAdapterFailureDiagnostic['phase']) || !message) return undefined;
+  return {
+    phase: phase as PagodaAdapterFailureDiagnostic['phase'],
+    category: category && adapterFailureCategories.has(category as PagodaAdapterFailureDiagnostic['category'])
+      ? category as PagodaAdapterFailureDiagnostic['category']
+      : 'unknown',
+    ...(stringFromMetadata(candidate.dependency) ? { dependency: stringFromMetadata(candidate.dependency) } : {}),
+    message: cleanDiagnosticMessage(message)
+  };
+};
+
+const inferAdapterFailureDependency = (message: string): string | undefined => {
+  const normalized = message.toLowerCase();
+  if (normalized.includes('session ledger')) return 'session-ledger';
+  if (normalized.includes('phone voice webhook')) return 'phone-webhook';
+  if (normalized.includes('twilio signature')) return 'twilio-signature';
+  if (normalized.includes('firestore')) return 'firestore';
+  if (normalized.includes('rules policy') || normalized.includes('dependency=rules')) return 'rules';
+  if (normalized.includes('booking workflow') || normalized.includes('commit-booking')) return 'booking-workflow';
+  if (normalized.includes('browser-chat') || normalized.includes('browser chat')) return 'browser-chat';
+  if (normalized.includes('replay observation')) return 'replay-observation';
+  return undefined;
+};
+
+const inferAdapterFailureCategory = (message: string): PagodaAdapterFailureDiagnostic['category'] => {
+  const normalized = message.toLowerCase();
+  if (normalized.includes('timed out') || normalized.includes('timeout')) return 'timeout';
+  if (
+    normalized.includes('requires ') ||
+    normalized.includes('required ') ||
+    normalized.includes('missing ') ||
+    normalized.includes('must match') ||
+    normalized.includes('is required')
+  ) return 'configuration';
+  if (
+    normalized.includes('http 5') ||
+    normalized.includes('upstream') ||
+    normalized.includes('internal server error') ||
+    normalized.includes('unavailable') ||
+    normalized.includes('request failed')
+  ) return 'dependency';
+  if (normalized.includes('not ready') || normalized.includes('setup')) return 'setup';
+  if (normalized.includes('observation') || normalized.includes('observable') || normalized.includes('evidence')) return 'observability';
+  return 'unknown';
+};
+
+const inferAdapterFailurePhase = (
+  result: TargetRunResult,
+  callerSession: PagodaCallerSession | undefined
+): PagodaAdapterFailureDiagnostic['phase'] => {
+  const explicitPhase = stringFromMetadata(result.metadata?.adapterFailurePhase);
+  if (explicitPhase && adapterFailurePhases.has(explicitPhase as PagodaAdapterFailureDiagnostic['phase'])) {
+    return explicitPhase as PagodaAdapterFailureDiagnostic['phase'];
+  }
+  if (callerSession?.stopReason === 'adapter-failed') {
+    return callerSession.turns.length === 0 ? 'startInteractive' : 'sendCallerTurn';
+  }
+  if (typeof result.metadata?.agenticStopReason === 'string') return 'startInteractive';
+  return 'execute';
+};
+
+const adapterFailureFromResult = (
+  result: TargetRunResult,
+  callerSession: PagodaCallerSession | undefined
+): PagodaAdapterFailureDiagnostic | undefined => {
+  const explicit = explicitAdapterFailureFromMetadata(result.metadata);
+  if (explicit) return explicit;
+  if (result.status !== 'failed' && result.status !== 'blocked') return undefined;
+  const rawMessage =
+    stringFromMetadata(result.stderr) ??
+    stringFromMetadata(result.stdout) ??
+    `adapter returned ${result.status}`;
+  const message = cleanDiagnosticMessage(rawMessage);
+  return {
+    phase: inferAdapterFailurePhase(result, callerSession),
+    category: inferAdapterFailureCategory(message),
+    ...(inferAdapterFailureDependency(message) ? { dependency: inferAdapterFailureDependency(message) } : {}),
+    message
+  };
+};
+
 export async function runTargetScenario(input: {
   context: PagodaRootContext;
   scenarioId: string | undefined;
@@ -56,6 +175,7 @@ export async function runTargetScenario(input: {
   interactionCase: string | undefined;
   interactionCases: string | undefined;
   artifactDirectory: string | undefined;
+  concurrency: number;
   reporter: PagodaCliReporter;
   io: PagodaCliIo;
 }): Promise<PagodaCommandResult> {
@@ -145,6 +265,24 @@ export async function runTargetScenario(input: {
     });
   };
 
+  const runJobs = async (jobs: Array<{ scenarioId: string; channel: string; interaction: PagodaMaterializedInteraction | undefined }>): Promise<PagodaRunCliResult[]> => {
+    const results = new Array<PagodaRunCliResult>(jobs.length);
+    let nextIndex = 0;
+    const workerCount = Math.min(input.concurrency, jobs.length);
+    const worker = async () => {
+      while (nextIndex < jobs.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        const job = jobs[index];
+        const run = await runOne(job.scenarioId, job.channel, job.interaction);
+        results[index] = run;
+        if (input.reporter !== 'json') input.io.stdout(formatRunProgress(run, context));
+      }
+    };
+    await Promise.all(Array.from({ length: workerCount }, () => worker()));
+    return results;
+  };
+
   if (runAll) {
     const summaryStartedAt = new Date().toISOString();
     const summaryStartedMs = Date.now();
@@ -162,15 +300,10 @@ export async function runTargetScenario(input: {
     if (runnableJobs.length === 0) {
       throw new Error(`${context.targetId}: no active scenarios${channel ? ` declare channel ${channel}` : ''}.`);
     }
-    const runs: PagodaRunCliResult[] = [];
     if (input.reporter !== 'json') {
       input.io.stdout(formatRunSummaryHeader({ projectId: context.targetId, channel: channel ?? null }, context));
     }
-    for (const job of runnableJobs) {
-      const run = await runOne(job.scenarioId, job.channel, job.interaction);
-      runs.push(run);
-      if (input.reporter !== 'json') input.io.stdout(formatRunProgress(run, context));
-    }
+    const runs = await runJobs(runnableJobs);
     const passed = runs.filter(isSuccessfulRun).length;
     const failed = runs.length - passed;
     const summary: PagodaRunCliSummary = {
@@ -211,15 +344,10 @@ export async function runTargetScenario(input: {
 
   const summaryStartedAt = new Date().toISOString();
   const summaryStartedMs = Date.now();
-  const runs: PagodaRunCliResult[] = [];
   if (input.reporter !== 'json') {
     input.io.stdout(formatRunSummaryHeader({ projectId: context.targetId, channel: null }, context));
   }
-  for (const job of runnableJobs) {
-    const run = await runOne(job.scenarioId, job.channel, job.interaction);
-    runs.push(run);
-    if (input.reporter !== 'json') input.io.stdout(formatRunProgress(run, context));
-  }
+  const runs = await runJobs(runnableJobs);
   const passed = runs.filter(isSuccessfulRun).length;
   const failed = runs.length - passed;
   const summary: PagodaRunCliSummary = {
@@ -280,6 +408,7 @@ async function runLoadedTargetScenario(input: {
     interaction: input.interaction
   });
   const finishRun = async (result: TargetRunResult, callerSession?: PagodaCallerSession): Promise<PagodaRunCliResult> => {
+    const adapterFailure = adapterFailureFromResult(result, callerSession);
     const observations = await adapter.collectObservations(result).catch((error: unknown) => {
       if (!callerSession || !isSyntheticAgenticFailureResult(result)) throw error;
       return canonicalEvidenceObservation({
@@ -318,6 +447,7 @@ async function runLoadedTargetScenario(input: {
       rawObservations,
       callerSession,
       logs: { stdout: result.stdout, stderr: result.stderr },
+      adapterFailure,
       startedAt,
       completedAt
     });
@@ -346,6 +476,7 @@ async function runLoadedTargetScenario(input: {
       completedAt,
       durationMs: Date.now() - startedMs,
       ...(agentic ? { agentic } : {}),
+      ...(adapterFailure ? { adapterFailure } : {}),
       oracle: evaluation
     };
   };

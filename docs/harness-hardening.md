@@ -10,6 +10,8 @@ broken test environment cannot masquerade as an outcome failure or pass.
 - Make setup evidence explicit.
 - Make observability requirements explicit.
 - Capture enough logs and raw observations to debug failed runs.
+- Preserve adapter failure diagnostics in CLI output and artifacts so setup or
+  dependency failures are actionable without opening every log file.
 - Keep deterministic fixtures deterministic.
 - Avoid target-specific assumptions in shared packages.
 - Keep observed-repo integration inside `.pagoda/` unless the product already
@@ -27,6 +29,15 @@ broken test environment cannot masquerade as an outcome failure or pass.
   `FAIL`.
 - Invalid scenario, map, contract, or unsupported channel:
   `SCENARIO_INVALID`.
+
+## Run Modes
+
+- Use replay or deterministic adapter modes for fast contract regression.
+- Use live browser, phone, or other transport adapters as smoke coverage for
+  session setup, transport behavior, and evidence collection.
+- Use `pagoda run --concurrency <n>` only when the target pack can isolate
+  fixtures, sessions, and side effects across concurrent jobs. Keep live phone
+  and other single-resource harnesses at `1`.
 
 ## Standalone Packs
 

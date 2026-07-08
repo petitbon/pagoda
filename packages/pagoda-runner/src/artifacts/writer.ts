@@ -8,7 +8,7 @@ import type {
 import type { PagodaRunPlan } from '@petitbon/pagoda-adapter-sdk';
 import { renderRunReport } from '../reports/markdown.js';
 import { sha256, stableJson } from './hashes.js';
-import { type PagodaRunArtifactManifest, runArtifactFiles } from './manifest.js';
+import { type PagodaAdapterFailureDiagnostic, type PagodaRunArtifactManifest, runArtifactFiles } from './manifest.js';
 
 export async function writeRunArtifactBundle(input: {
   directory: string;
@@ -21,6 +21,7 @@ export async function writeRunArtifactBundle(input: {
   rawObservations?: unknown;
   callerSession?: PagodaCallerSession;
   logs?: { stdout?: string; stderr?: string };
+  adapterFailure?: PagodaAdapterFailureDiagnostic;
 }): Promise<PagodaRunArtifactManifest> {
   await mkdir(join(input.directory, 'logs'), { recursive: true });
   const files = runArtifactFiles;
@@ -47,6 +48,7 @@ export async function writeRunArtifactBundle(input: {
     status,
     oracleStatus,
     ...(agentic ? { agentic } : {}),
+    ...(input.adapterFailure ? { adapterFailure: input.adapterFailure } : {}),
     startedAt: input.startedAt,
     completedAt: input.completedAt,
     files: manifestFiles
