@@ -163,6 +163,8 @@ describe('@petitbon/pagoda-cli', () => {
         status: 'ready'
       }
     });
+
+    await expect(main(['check', '--target', 'missing-target'])).rejects.toThrow(/missing-target: target manifest does not exist/);
   });
 
   it('initializes, validates, runs, replays, and reports a direct .pagoda target pack', async () => {

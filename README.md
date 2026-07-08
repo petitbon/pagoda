@@ -1,19 +1,21 @@
 # Pagoda
 
-Pagoda validates agentic software by running evidence-backed scenarios,
-normalizing observations, applying deterministic outcome
-contracts, and producing reproducible proof artifacts.
+Pagoda is an evidence-first validation framework for agentic software. It runs
+declared scenarios through target-specific adapters, normalizes observed product
+behavior into canonical evidence, evaluates deterministic outcome contracts, and
+writes reproducible proof artifacts.
 
-Pagoda does not ask an agent whether it behaved correctly. An adapter
-collects trusted evidence from APIs, traces, logs, events, tool calls, and state
-changes. The Pagoda oracle evaluates that evidence against a generated outcome
-contract.
+Pagoda does not ask an agent to judge whether it behaved correctly. Adapters
+collect trusted evidence from product surfaces such as APIs, traces, logs,
+events, tool calls, transcripts, UI state, and persisted state changes. The
+Pagoda oracle then evaluates that evidence against an outcome contract generated
+from the scenario and evidence map.
 
-Pagoda core stays project-agnostic. Target packs and adapters are allowed to be
-deeply project-specific: one project may translate browser-chat events, another
-may translate phone transcripts, LangGraph traces, OpenAI Assistants runs, or
-browser automation output. All adapters return the same canonical evidence
-observation shape for the oracle.
+Pagoda core remains project-agnostic. Target packs and adapters contain the
+project-specific coupling: one project may translate browser-chat events,
+another may translate phone transcripts, LangGraph traces, OpenAI Assistants
+runs, browser automation output, or internal runtime records. All adapters
+return the same canonical evidence observation shape for the oracle.
 
 ## Install
 
@@ -150,6 +152,31 @@ scenario directly:
     "suite": "product-agent-local",
     "scenario": "safe-proposal",
     "selectedCase": "PRODUCT-AGENT-SAFE-PROPOSAL-001.case"
+  },
+  "interaction": {
+    "mode": "generated",
+    "persona": {
+      "id": "starter-user",
+      "traits": ["goal-oriented", "clear"]
+    },
+    "slots": {
+      "urgency": { "values": ["standard", "time-sensitive"] },
+      "request": { "values": ["safe proposal", "safe next step"] }
+    },
+    "turns": [
+      {
+        "id": "request-outcome",
+        "actor": "user",
+        "after": "channel-ready",
+        "templates": [
+          "Show me a {urgency} {request}.",
+          "I need a {urgency} {request}; do not commit anything without approval."
+        ]
+      }
+    ],
+    "coverage": {
+      "strategy": "seeded-pairwise"
+    }
   }
 }
 ```

@@ -44,7 +44,8 @@ export async function main(args = process.argv.slice(2), io: PagodaCliIo = conso
   if (command === 'update') return updateTargetPack(args, io);
 
   const context = resolveRootContext({
-    root: argValue(args, '--root')
+    root: argValue(args, '--root'),
+    targetId: argValue(args, '--target')
   });
   if (command === 'validate') return validateTarget(context, io);
   if (command === 'compile') return compileTarget(context, io);

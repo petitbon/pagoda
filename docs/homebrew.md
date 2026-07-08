@@ -32,7 +32,7 @@ The formula downloads a versioned standalone CLI release asset and pins the
 expected SHA256. For example:
 
 ```text
-https://github.com/petitbon/pagoda/releases/download/v0.1.17/pagoda-cli-standalone.tgz
+https://github.com/petitbon/pagoda/releases/download/vX.Y.Z/pagoda-cli-standalone.tgz
 ```
 
 The release workflow updates the formula URL, version, and SHA after each

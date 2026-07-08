@@ -46,6 +46,7 @@ pagoda init
 pagoda init --channel phone
 pagoda update
 pagoda codex install --root .pagoda
+pagoda validate --target demo-agent
 pagoda scenario create --root .pagoda --id PRODUCT-AGENT-LOCATION-ANSWER-001 --title "Location answer" --channel browser-chat
 pagoda scenario create --root .pagoda --id PRODUCT-AGENT-LEGACY-001 --title "Legacy" --interaction none
 pagoda adapter create --root .pagoda --id product-agent-experimental --channel browser-chat
@@ -85,6 +86,8 @@ when running from outside the observed repo.
 
 Root resolution order is `--root`, then `PAGODA_ROOT`, then the nearest
 `.pagoda/pagoda.target.json`, then the Pagoda development workspace.
+In the development workspace, `--target <id>` selects a target under
+`targets/<id>`; the default is `demo-agent`.
 
 ## Behavior
 
