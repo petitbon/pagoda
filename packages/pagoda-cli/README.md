@@ -104,7 +104,8 @@ In the development workspace, `--target <id>` selects a target under
   repo. It preserves existing skill files unless `--force` is passed.
 - `validate` checks project-pack structure, scenario/evidence-map consistency,
   and generated contract freshness.
-- `compile` generates outcome contracts from scenarios and evidence maps.
+- `compile` generates outcome contracts from scenarios and evidence maps and
+  removes orphaned generated contracts.
 - `check` loads the configured adapter and reports health.
 - `adapter list` lists modular adapter bundles.
 - `adapter check` reports adapter health, missing environment variables, and
@@ -115,10 +116,14 @@ In the development workspace, `--target <id>` selects a target under
   evidence registry.
 - `run` executes every active scenario by default, or one scenario with
   `--scenario <id>`, then writes reproducible artifact bundles.
+  It refuses missing, stale, version-mismatched, or unexpected contracts before
+  loading an adapter; run `pagoda compile` after source changes.
   Generated interaction scenarios run one deterministic case by default. Use
   `--interaction-case <case-id|index>` for repros and `--interaction-cases all`
   for pairwise coverage.
   The default reporter prints Vitest-style run lines and a summary. Use
   `--reporter json` or `--json` for automation.
-- `replay` reruns oracle evaluation from a saved artifact.
-- `report` regenerates the Markdown report for a saved artifact.
+- `replay` verifies artifact paths and hashes, then reruns oracle evaluation
+  from the saved proof inputs.
+- `report` verifies all non-report artifact sources, then regenerates the
+  Markdown report and its hash.

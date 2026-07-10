@@ -10,7 +10,7 @@ It is deterministic and uses strict status priority.
 2. `SETUP_FAILED`: the scenario is valid, but the target, fixture, credential,
    seed data, or harness setup failed before evaluation.
 3. `OBSERVABILITY_FAILED`: the run may have happened, but Pagoda cannot observe
-   required trusted evidence or correlation.
+   required trusted evidence, correlation, or ordering.
 4. `FAIL`: the run is valid and observable, but evidence proves a violation or
    fails to prove the expected outcome.
 5. `PASS`: trusted evidence proves the expected outcome and no forbidden side
@@ -19,7 +19,8 @@ It is deterministic and uses strict status priority.
 ## Evidence Rules
 
 - Missing setup evidence is `SETUP_FAILED`.
-- Missing trace source or correlation evidence is `OBSERVABILITY_FAILED`.
+- Missing trace source, correlation, or ordering evidence is
+  `OBSERVABILITY_FAILED`.
 - Observed forbidden tools, events, claims, or rejected evidence are `FAIL`.
 - Missing accepted evidence is `FAIL`.
 - Required workflow outcomes and channel-specific evidence are part of the pass

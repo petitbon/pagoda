@@ -67,6 +67,9 @@ const requiredString = (errors: string[], path: string, value: unknown): void =>
   }
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
 const requiredStringArray = (errors: string[], path: string, value: unknown): string[] => {
   if (!Array.isArray(value) || value.length === 0 || value.some((item) => typeof item !== 'string' || item.trim().length === 0)) {
     errors.push(`${path} must be a non-empty string array`);
@@ -84,8 +87,29 @@ const optionalStringArray = (errors: string[], path: string, value: unknown): st
   return value as string[];
 };
 
-const rejectRetiredReferences = (errors: string[], path: string, values: readonly string[]): void => {
+const rejectDuplicateStrings = (errors: string[], path: string, values: readonly string[]): void => {
+  const seen = new Set<string>();
   for (const value of values) {
+    if (seen.has(value)) errors.push(`${path} contains duplicate value: ${value}`);
+    seen.add(value);
+  }
+};
+
+const requiredUniqueStringArray = (errors: string[], path: string, value: unknown): string[] => {
+  const values = requiredStringArray(errors, path, value);
+  rejectDuplicateStrings(errors, path, values);
+  return values;
+};
+
+const sameStringSet = (left: readonly string[], right: unknown): boolean =>
+  Array.isArray(right)
+  && right.every((value) => typeof value === 'string')
+  && left.length === right.length
+  && left.every((value) => right.includes(value));
+
+const rejectRetiredReferences = (errors: string[], path: string, values: readonly unknown[]): void => {
+  for (const value of values) {
+    if (typeof value !== 'string') continue;
     if (retiredEddIdPattern.test(value)) errors.push(`${path} must not use EDD ids: ${value}`);
     if (retiredPathPattern.test(value)) errors.push(`${path} must not reference EventStorming files: ${value}`);
   }
@@ -102,7 +126,7 @@ const validateChannels = (errors: string[], path: string, values: unknown): stri
 };
 
 const validateTraceSources = (errors: string[], path: string, values: unknown): string[] => {
-  const sources = requiredStringArray(errors, path, values);
+  const sources = requiredUniqueStringArray(errors, path, values);
   for (const source of sources) {
     if (!allowedTraceSources.has(source as PagodaTraceSource)) {
       errors.push(`${path} contains unsupported source: ${source}`);
@@ -114,7 +138,7 @@ const validateTraceSources = (errors: string[], path: string, values: unknown): 
 const validateChannelContracts = (errors: string[], scenario: Partial<PagodaScenario>, channels: readonly string[]): string[] => {
   const contracts = scenario.channelContracts;
   const texts: string[] = [];
-  if (!contracts || typeof contracts !== 'object') {
+  if (!isRecord(contracts)) {
     errors.push('channelContracts must be an object');
     return texts;
   }
@@ -181,14 +205,17 @@ type PartialInteraction = Partial<PagodaInteractionSpec> & {
 const allowedAgenticInterventionTriggers = new Set<PagodaAgenticInterventionTrigger>([
   'answer-question',
   'ask-clarification',
-  'correct-wrong-service',
-  'correct-wrong-staff',
-  'correct-wrong-date',
-  'correct-wrong-time',
+  'correct-conflicting-fact',
   'reject-out-of-policy',
   'accept-valid-option',
   'verify-confirmation',
   'end-when-complete'
+]);
+const retiredFactCorrectionTriggers = new Set([
+  'correct-wrong-service',
+  'correct-wrong-staff',
+  'correct-wrong-date',
+  'correct-wrong-time'
 ]);
 
 const validateInteractionPersona = (
@@ -369,7 +396,15 @@ const validateAgenticInteraction = (
     if (!Array.isArray(parsedPolicy.triggers) || parsedPolicy.triggers.length === 0) {
       errors.push('interaction.interventionPolicy.triggers must be a non-empty array');
     } else {
+      const triggerStrings = parsedPolicy.triggers.filter((trigger): trigger is string => typeof trigger === 'string');
+      rejectDuplicateStrings(errors, 'interaction.interventionPolicy.triggers', triggerStrings);
       for (const [index, trigger] of parsedPolicy.triggers.entries()) {
+        if (typeof trigger === 'string' && retiredFactCorrectionTriggers.has(trigger)) {
+          errors.push(
+            `interaction.interventionPolicy.triggers[${index}] ${trigger} was removed in Pagoda 0.3.0; use correct-conflicting-fact`
+          );
+          continue;
+        }
         if (!allowedAgenticInterventionTriggers.has(trigger as PagodaAgenticInterventionTrigger)) {
           errors.push(`interaction.interventionPolicy.triggers[${index}] contains unsupported trigger: ${String(trigger)}`);
         }
@@ -423,13 +458,13 @@ const validateInteraction = (errors: string[], value: unknown): string[] => {
 };
 
 export function validatePagodaScenario(value: unknown): PagodaScenarioValidationResult {
-  const scenario = value as Partial<PagodaScenario>;
-  const scenarioId = typeof scenario.id === 'string' ? scenario.id : '<unknown>';
   const errors: string[] = [];
 
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return { scenarioId, errors: ['scenario must be an object'] };
+  if (!isRecord(value)) {
+    return { scenarioId: '<unknown>', errors: ['scenario must be an object'] };
   }
+  const scenario = value as Partial<PagodaScenario>;
+  const scenarioId = typeof scenario.id === 'string' ? scenario.id : '<unknown>';
 
   if (scenario.schemaVersion !== 'pagoda.scenario') errors.push('schemaVersion must be pagoda.scenario');
   requiredString(errors, 'id', scenario.id);
@@ -507,8 +542,9 @@ export function assertValidPagodaScenarios(scenarios: readonly PagodaScenario[])
   for (const scenario of scenarios) {
     const result = validatePagodaScenario(scenario);
     errors.push(...result.errors.map((error) => `${result.scenarioId}: ${error}`));
-    if (ids.has(scenario.id)) errors.push(`${scenario.id}: duplicate scenario id`);
-    ids.add(scenario.id);
+    const id = isRecord(scenario) && typeof scenario.id === 'string' ? scenario.id : undefined;
+    if (id && ids.has(id)) errors.push(`${id}: duplicate scenario id`);
+    if (id) ids.add(id);
   }
 
   if (errors.length > 0) {
@@ -520,16 +556,16 @@ export function validatePagodaEvidenceMap(
   value: unknown,
   scenarioById: ReadonlyMap<string, PagodaScenario>
 ): PagodaScenarioValidationResult {
+  const errors: string[] = [];
+
+  if (!isRecord(value)) {
+    return { scenarioId: '<unknown>', errors: ['evidence map must be an object'] };
+  }
   const evidenceMap = value as Partial<PagodaEvidenceMap>;
   const scenarioId = typeof evidenceMap.scenarioId === 'string' ? evidenceMap.scenarioId : '<unknown>';
-  const errors: string[] = [];
   const scenario = typeof evidenceMap.scenarioId === 'string'
     ? scenarioById.get(evidenceMap.scenarioId)
     : undefined;
-
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return { scenarioId, errors: ['evidence map must be an object'] };
-  }
   if (evidenceMap.schemaVersion !== 'pagoda.evidence-map') errors.push('schemaVersion must be pagoda.evidence-map');
   requiredString(errors, 'id', evidenceMap.id);
   requiredString(errors, 'scenarioId', evidenceMap.scenarioId);
@@ -547,12 +583,20 @@ export function validatePagodaEvidenceMap(
     errors.push('outcomeContractId must match scenarioId');
   }
 
-  if (!Array.isArray(evidenceMap.nodes) || evidenceMap.nodes.length === 0) {
+  const rawNodes = value.nodes;
+  if (!Array.isArray(rawNodes) || rawNodes.length === 0) {
     errors.push('nodes must be a non-empty array');
   }
+  const nodes = Array.isArray(rawNodes) ? rawNodes : [];
   const nodeIds = new Set<string>();
   const nodeTypes = new Set<string>();
-  for (const [index, node] of (evidenceMap.nodes ?? []).entries()) {
+  const nodeTexts: string[] = [];
+  for (const [index, rawNode] of nodes.entries()) {
+    if (!isRecord(rawNode)) {
+      errors.push(`nodes[${index}] must be an object`);
+      continue;
+    }
+    const node = rawNode;
     requiredString(errors, `nodes[${index}].id`, node.id);
     requiredString(errors, `nodes[${index}].label`, node.label);
     requiredString(errors, `nodes[${index}].summary`, node.summary);
@@ -561,27 +605,50 @@ export function validatePagodaEvidenceMap(
       if (nodeIds.has(node.id)) errors.push(`nodes[${index}].id duplicates ${node.id}`);
       nodeIds.add(node.id);
     }
-    if (!allowedEvidenceMapNodeTypes.has(node.type)) {
-      errors.push(`nodes[${index}].type contains unsupported type: ${node.type}`);
+    if (!allowedEvidenceMapNodeTypes.has(node.type as PagodaEvidenceMapNodeType)) {
+      errors.push(`nodes[${index}].type contains unsupported type: ${String(node.type)}`);
     } else {
-      nodeTypes.add(node.type);
+      nodeTypes.add(node.type as string);
     }
-    for (const source of node.traceSources ?? []) {
-      if (!allowedTraceSources.has(source)) errors.push(`nodes[${index}].traceSources contains unsupported source: ${source}`);
+    const evidenceCodes = optionalStringArray(errors, `nodes[${index}].evidenceCodes`, node.evidenceCodes);
+    const traceSources = optionalStringArray(errors, `nodes[${index}].traceSources`, node.traceSources);
+    const channels = optionalStringArray(errors, `nodes[${index}].channels`, node.channels);
+    rejectDuplicateStrings(errors, `nodes[${index}].evidenceCodes`, evidenceCodes);
+    rejectDuplicateStrings(errors, `nodes[${index}].traceSources`, traceSources);
+    rejectDuplicateStrings(errors, `nodes[${index}].channels`, channels);
+    for (const source of traceSources) {
+      if (!allowedTraceSources.has(source as PagodaTraceSource)) errors.push(`nodes[${index}].traceSources contains unsupported source: ${source}`);
     }
-    for (const channel of node.channels ?? []) {
-      if (!allowedChannels.has(channel)) errors.push(`nodes[${index}].channels contains unsupported channel: ${channel}`);
+    for (const channel of channels) {
+      if (!allowedChannels.has(channel as PagodaChannel)) errors.push(`nodes[${index}].channels contains unsupported channel: ${channel}`);
     }
+    nodeTexts.push(
+      typeof node.id === 'string' ? node.id : '',
+      typeof node.label === 'string' ? node.label : '',
+      typeof node.summary === 'string' ? node.summary : '',
+      typeof node.owner === 'string' ? node.owner : '',
+      ...evidenceCodes,
+      ...traceSources,
+      ...channels
+    );
   }
   for (const requiredNodeType of ['outcome', 'evidence', 'oracle']) {
     if (!nodeTypes.has(requiredNodeType)) errors.push(`nodes must contain at least one ${requiredNodeType} node`);
   }
 
-  if (!Array.isArray(evidenceMap.edges) || evidenceMap.edges.length === 0) {
+  const rawEdges = value.edges;
+  if (!Array.isArray(rawEdges) || rawEdges.length === 0) {
     errors.push('edges must be a non-empty array');
   }
+  const edges = Array.isArray(rawEdges) ? rawEdges : [];
   const edgeIds = new Set<string>();
-  for (const [index, edge] of (evidenceMap.edges ?? []).entries()) {
+  const edgeTexts: string[] = [];
+  for (const [index, rawEdge] of edges.entries()) {
+    if (!isRecord(rawEdge)) {
+      errors.push(`edges[${index}] must be an object`);
+      continue;
+    }
+    const edge = rawEdge;
     requiredString(errors, `edges[${index}].id`, edge.id);
     requiredString(errors, `edges[${index}].sourceId`, edge.sourceId);
     requiredString(errors, `edges[${index}].targetId`, edge.targetId);
@@ -590,20 +657,38 @@ export function validatePagodaEvidenceMap(
       if (edgeIds.has(edge.id)) errors.push(`edges[${index}].id duplicates ${edge.id}`);
       edgeIds.add(edge.id);
     }
-    if (!allowedEvidenceMapEdgeTypes.has(edge.type)) errors.push(`edges[${index}].type contains unsupported type: ${edge.type}`);
+    if (!allowedEvidenceMapEdgeTypes.has(edge.type as PagodaEvidenceMapEdgeType)) errors.push(`edges[${index}].type contains unsupported type: ${String(edge.type)}`);
     if (typeof edge.sourceId === 'string' && !nodeIds.has(edge.sourceId)) {
       errors.push(`edges[${index}].sourceId references missing node: ${edge.sourceId}`);
     }
     if (typeof edge.targetId === 'string' && !nodeIds.has(edge.targetId)) {
       errors.push(`edges[${index}].targetId references missing node: ${edge.targetId}`);
     }
+    edgeTexts.push(
+      typeof edge.id === 'string' ? edge.id : '',
+      typeof edge.sourceId === 'string' ? edge.sourceId : '',
+      typeof edge.targetId === 'string' ? edge.targetId : '',
+      typeof edge.label === 'string' ? edge.label : ''
+    );
   }
 
-  const requiredSources = validateTraceSources(errors, 'traceContract.requiredSources', evidenceMap.traceContract?.requiredSources);
-  const correlation = requiredStringArray(errors, 'traceContract.correlation', evidenceMap.traceContract?.correlation);
-  const ordering = requiredStringArray(errors, 'traceContract.ordering', evidenceMap.traceContract?.ordering);
-  if (evidenceMap.traceContract?.missingEvidenceStatus !== 'OBSERVABILITY_FAILED') {
+  const rawTraceContract = value.traceContract;
+  if (!isRecord(rawTraceContract)) errors.push('traceContract must be an object');
+  const traceContract = isRecord(rawTraceContract) ? rawTraceContract : {};
+  const requiredSources = validateTraceSources(errors, 'traceContract.requiredSources', traceContract.requiredSources);
+  const correlation = requiredUniqueStringArray(errors, 'traceContract.correlation', traceContract.correlation);
+  const ordering = requiredUniqueStringArray(errors, 'traceContract.ordering', traceContract.ordering);
+  if (traceContract.missingEvidenceStatus !== 'OBSERVABILITY_FAILED') {
     errors.push('traceContract.missingEvidenceStatus must be OBSERVABILITY_FAILED');
+  }
+  const rawScenarioTraceSources = scenario?.evidence?.requiredTraceSources;
+  const scenarioTraceSources = Array.isArray(rawScenarioTraceSources)
+    ? rawScenarioTraceSources.filter((source) => typeof source === 'string')
+    : [];
+  if (scenario && !sameStringSet(requiredSources, scenarioTraceSources)) {
+    errors.push(
+      `traceContract.requiredSources must match scenario evidence.requiredTraceSources: ${scenarioTraceSources.join(', ')}`
+    );
   }
 
   rejectRetiredReferences(errors, 'evidence map text', [
@@ -612,21 +697,8 @@ export function validatePagodaEvidenceMap(
     evidenceMap.outcomeContractId ?? '',
     evidenceMap.title ?? '',
     evidenceMap.owner ?? '',
-    ...(evidenceMap.nodes ?? []).flatMap((node) => [
-      node.id ?? '',
-      node.label ?? '',
-      node.summary ?? '',
-      node.owner ?? '',
-      ...(node.evidenceCodes ?? []),
-      ...(node.traceSources ?? []),
-      ...(node.channels ?? [])
-    ]),
-    ...(evidenceMap.edges ?? []).flatMap((edge) => [
-      edge.id ?? '',
-      edge.sourceId ?? '',
-      edge.targetId ?? '',
-      edge.label ?? ''
-    ]),
+    ...nodeTexts,
+    ...edgeTexts,
     ...requiredSources,
     ...correlation,
     ...ordering
@@ -639,22 +711,30 @@ export function assertValidPagodaEvidenceMaps(
   evidenceMaps: readonly PagodaEvidenceMap[],
   scenarios: readonly PagodaScenario[]
 ): void {
-  const scenarioById = new Map(scenarios.map((scenario) => [scenario.id, scenario]));
+  const scenarioById = new Map(
+    scenarios
+      .filter((scenario) => isRecord(scenario) && typeof scenario.id === 'string')
+      .map((scenario) => [scenario.id, scenario])
+  );
   const mapScenarioIds = new Set<string>();
   const errors: string[] = [];
 
   for (const evidenceMap of evidenceMaps) {
     const result = validatePagodaEvidenceMap(evidenceMap, scenarioById);
     errors.push(...result.errors.map((error) => `${result.scenarioId}: ${error}`));
-    if (mapScenarioIds.has(evidenceMap.scenarioId)) {
-      errors.push(`${evidenceMap.scenarioId}: duplicate evidence map for scenario`);
+    const mapScenarioId = isRecord(evidenceMap) && typeof evidenceMap.scenarioId === 'string'
+      ? evidenceMap.scenarioId
+      : undefined;
+    if (mapScenarioId && mapScenarioIds.has(mapScenarioId)) {
+      errors.push(`${mapScenarioId}: duplicate evidence map for scenario`);
     }
-    mapScenarioIds.add(evidenceMap.scenarioId);
+    if (mapScenarioId) mapScenarioIds.add(mapScenarioId);
   }
 
   for (const scenario of scenarios) {
-    if (!mapScenarioIds.has(scenario.id)) {
-      errors.push(`${scenario.id}: missing evidence map`);
+    const scenarioId = isRecord(scenario) && typeof scenario.id === 'string' ? scenario.id : undefined;
+    if (scenarioId && !mapScenarioIds.has(scenarioId)) {
+      errors.push(`${scenarioId}: missing evidence map`);
     }
   }
 

@@ -6,6 +6,7 @@ import {
   listPagodaInteractionCases,
   materializePagodaInteraction,
   projectScenarioToOutcomeContract,
+  validatePagodaEvidenceMap,
   validatePagodaScenario,
   type PagodaEvidenceMap,
   type PagodaInteractionSpec,
@@ -45,7 +46,7 @@ const contract = {
   trace: {
     requiredSources: ['transcript'],
     correlation: ['channel'],
-    ordering: [],
+    ordering: ['eventTime'],
     missingEvidenceStatus: 'OBSERVABILITY_FAILED'
   },
   forbiddenSideEffects: {
@@ -59,6 +60,7 @@ const passingObservation = () => canonicalEvidenceObservation({
   setupEvidenceCodes: ['SETUP_READY'],
   observedTraceSources: ['transcript'],
   observedCorrelation: ['channel'],
+  observedOrdering: ['eventTime'],
   acceptedEvidenceCodes: ['OUTCOME_ACCEPTED', 'CHANNEL_READY']
 });
 
@@ -107,7 +109,7 @@ const agenticInteraction = {
     disclosureRules: ['Only accept explicit bookable options.']
   },
   interventionPolicy: {
-    triggers: ['answer-question', 'ask-clarification', 'correct-wrong-staff', 'accept-valid-option', 'verify-confirmation'],
+    triggers: ['answer-question', 'ask-clarification', 'correct-conflicting-fact', 'accept-valid-option', 'verify-confirmation'],
     patience: 'medium'
   },
   termination: {
@@ -248,6 +250,61 @@ describe('@petitbon/pagoda-core', () => {
     }).status).toBe('PASS');
   });
 
+  it('requires declared ordering evidence', () => {
+    const result = evaluatePagodaOutcomeContract({
+      contract,
+      channel: 'browser-chat',
+      caseId: 'case',
+      observations: canonicalEvidenceObservation({
+        ...passingObservation(),
+        observedOrdering: []
+      })
+    });
+    expect(result.status).toBe('OBSERVABILITY_FAILED');
+    expect(result.missingOrdering).toEqual(['eventTime']);
+    expect(result.clauses).toContainEqual(expect.objectContaining({
+      clause: 'ordering.eventTime',
+      status: 'MISSING'
+    }));
+  });
+
+  it('returns validation errors for malformed maps and mismatched trace sources', () => {
+    const scenario = scenarioWithInteraction();
+    expect(validatePagodaEvidenceMap(null, new Map()).errors).toEqual([
+      'evidence map must be an object'
+    ]);
+    const malformed = validatePagodaEvidenceMap({
+      schemaVersion: 'pagoda.evidence-map',
+      id: scenario.id,
+      scenarioId: scenario.id,
+      outcomeContractId: scenario.id,
+      title: 'Malformed',
+      owner: 'pagoda',
+      nodes: {},
+      edges: [null],
+      traceContract: {
+        requiredSources: ['adapter_logs'],
+        correlation: ['channel'],
+        ordering: ['eventTime'],
+        missingEvidenceStatus: 'OBSERVABILITY_FAILED'
+      }
+    }, new Map([[scenario.id, scenario]]));
+    expect(malformed.errors).toEqual(expect.arrayContaining([
+      'nodes must be a non-empty array',
+      'edges[0] must be an object',
+      'traceContract.requiredSources must match scenario evidence.requiredTraceSources: transcript'
+    ]));
+
+    const malformedScenario = {
+      ...scenario,
+      evidence: { ...scenario.evidence, requiredTraceSources: { length: 1 } }
+    } as unknown as PagodaScenario;
+    expect(() => validatePagodaEvidenceMap(
+      evidenceMapFor(scenario),
+      new Map([[scenario.id, malformedScenario]])
+    )).not.toThrow();
+  });
+
   it('projects contracts with source freshness metadata when supplied by caller', async () => {
     const scenario = JSON.parse(await readFile(
       '../../targets/demo-agent/docs/pagoda/scenarios/demo-proposal-presented-001.scenario.json',
@@ -318,7 +375,7 @@ describe('@petitbon/pagoda-core', () => {
       persona: { id: 'booking-caller' },
       goal: { summary: 'Book a barber haircut with Norman tomorrow around 2 PM.' },
       interventionPolicy: {
-        triggers: expect.arrayContaining(['ask-clarification', 'correct-wrong-staff'])
+        triggers: expect.arrayContaining(['ask-clarification', 'correct-conflicting-fact'])
       }
     });
   });
@@ -384,6 +441,19 @@ describe('@petitbon/pagoda-core', () => {
       'interaction.interventionPolicy.triggers[0] contains unsupported trigger: unsupported-trigger',
       'interaction.termination.maxTurns must be a positive integer'
     ]));
+  });
+
+  it('reports the 0.3 migration for retired fact-correction triggers', () => {
+    const scenario = {
+      ...scenarioWithInteraction(),
+      interaction: {
+        ...agenticInteraction,
+        interventionPolicy: { triggers: ['correct-wrong-staff'] }
+      }
+    };
+    expect(validatePagodaScenario(scenario).errors).toContain(
+      'interaction.interventionPolicy.triggers[0] correct-wrong-staff was removed in Pagoda 0.3.0; use correct-conflicting-fact'
+    );
   });
 
   it('rejects undeclared slot references in agentic renderable fields', () => {

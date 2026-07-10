@@ -25,9 +25,14 @@ export type PagodaAgenticLifecycleRunResult = PagodaAgenticSessionRunResult & {
 type AgenticStopReason = PagodaCallerSession['stopReason'];
 
 type AgenticSessionErrorKind = Extract<AgenticStopReason, 'timeout' | 'adapter-failed' | 'provider-failed'>;
+type AgenticFailurePhase = 'callerProvider' | 'startInteractive' | 'observeTarget' | 'sendCallerTurn' | 'finishInteractive';
 
 class AgenticSessionError extends Error {
-  constructor(readonly kind: AgenticSessionErrorKind, message: string) {
+  constructor(
+    readonly kind: AgenticSessionErrorKind,
+    readonly phase: AgenticFailurePhase,
+    message: string
+  ) {
     super(message);
   }
 }
@@ -37,7 +42,12 @@ const remainingDurationMs = (startedMs: number, maxDurationMs: number | undefine
   return maxDurationMs - (Date.now() - startedMs);
 };
 
-const syntheticResult = (prepared: PreparedRun, stopReason: AgenticStopReason, message: string): TargetRunResult => ({
+const syntheticResult = (
+  prepared: PreparedRun,
+  stopReason: AgenticStopReason,
+  message: string,
+  phase?: AgenticFailurePhase
+): TargetRunResult => ({
   runId: prepared.runId,
   status: stopReason === 'completed' ? 'completed' : 'failed',
   stdout: '',
@@ -45,7 +55,8 @@ const syntheticResult = (prepared: PreparedRun, stopReason: AgenticStopReason, m
   exitCode: stopReason === 'completed' ? 0 : 1,
   metadata: {
     ...prepared.metadata,
-    agenticStopReason: stopReason
+    agenticStopReason: stopReason,
+    ...(phase ? { agenticFailurePhase: phase, adapterFailurePhase: phase } : {})
   }
 });
 
@@ -78,7 +89,7 @@ const callerSessionFor = (input: {
 });
 
 const withTimeout = async <T>(
-  label: string,
+  phase: AgenticFailurePhase,
   startedMs: number,
   maxDurationMs: number | undefined,
   task: (options: PagodaAdapterOperationOptions) => Promise<T>,
@@ -86,7 +97,7 @@ const withTimeout = async <T>(
 ): Promise<T> => {
   const remaining = remainingDurationMs(startedMs, maxDurationMs);
   if (remaining !== undefined && remaining <= 0) {
-    throw new AgenticSessionError('timeout', `${label} exceeded interaction.termination.maxDurationMs.`);
+    throw new AgenticSessionError('timeout', phase, `${phase} exceeded interaction.termination.maxDurationMs.`);
   }
   const controller = new AbortController();
   const taskPromise = task({ signal: controller.signal });
@@ -110,7 +121,7 @@ const withTimeout = async <T>(
         timer = setTimeout(() => {
           timedOut = true;
           controller.abort();
-          reject(new AgenticSessionError('timeout', `${label} exceeded interaction.termination.maxDurationMs.`));
+          reject(new AgenticSessionError('timeout', phase, `${phase} exceeded interaction.termination.maxDurationMs.`));
         }, remaining);
       })
     ]);
@@ -164,17 +175,17 @@ export async function runPagodaAgenticCallerSession(input: {
       const observed = await withTimeout('observeTarget', startedMs, maxDurationMs, async (options) => adapter.observeTarget(prepared, options))
         .catch((error: unknown) => {
           if (error instanceof AgenticSessionError) throw error;
-          throw new AgenticSessionError('adapter-failed', error instanceof Error ? error.message : 'observeTarget failed.');
+          throw new AgenticSessionError('adapter-failed', 'observeTarget', error instanceof Error ? error.message : 'observeTarget failed.');
         });
       const observedNewTurns = newTargetTurns(observed.turns, seenTargetTurnIds);
       turns.push(...observedNewTurns);
       observedTurns.push(...observedNewTurns);
 
-      const decision = await withTimeout('caller provider', startedMs, maxDurationMs, async () =>
+      const decision = await withTimeout('callerProvider', startedMs, maxDurationMs, async () =>
         provider.decide({ interaction, observedTurns, previousDecisions: decisions })
       ).catch((error: unknown) => {
         if (error instanceof AgenticSessionError) throw error;
-        throw new AgenticSessionError('provider-failed', error instanceof Error ? error.message : 'caller provider failed.');
+        throw new AgenticSessionError('provider-failed', 'callerProvider', error instanceof Error ? error.message : 'caller provider failed.');
       });
       decisions.push(decision);
 
@@ -189,17 +200,17 @@ export async function runPagodaAgenticCallerSession(input: {
       const response = await withTimeout('sendCallerTurn', startedMs, maxDurationMs, async (options) => adapter.sendCallerTurn(prepared, callerTurn, options))
         .catch((error: unknown) => {
           if (error instanceof AgenticSessionError) throw error;
-          throw new AgenticSessionError('adapter-failed', error instanceof Error ? error.message : 'sendCallerTurn failed.');
+          throw new AgenticSessionError('adapter-failed', 'sendCallerTurn', error instanceof Error ? error.message : 'sendCallerTurn failed.');
         });
       const responseNewTurns = newTargetTurns(response.turns, seenTargetTurnIds);
       turns.push(...responseNewTurns);
       observedTurns.push(...responseNewTurns);
       if (decision.action === 'accept' && waitsForCompletion && responseNewTurns.length > 0) {
-        const completionDecision = await withTimeout('caller provider', startedMs, maxDurationMs, async () =>
+        const completionDecision = await withTimeout('callerProvider', startedMs, maxDurationMs, async () =>
           provider.decide({ interaction, observedTurns, previousDecisions: decisions })
         ).catch((error: unknown) => {
           if (error instanceof AgenticSessionError) throw error;
-          throw new AgenticSessionError('provider-failed', error instanceof Error ? error.message : 'caller provider failed.');
+          throw new AgenticSessionError('provider-failed', 'callerProvider', error instanceof Error ? error.message : 'caller provider failed.');
         });
         if (completionDecision.action === 'end') {
           decisions.push(completionDecision);
@@ -216,12 +227,12 @@ export async function runPagodaAgenticCallerSession(input: {
     result = await withTimeout('finishInteractive', startedMs, maxDurationMs, async (options) => adapter.finishInteractive(prepared, options))
       .catch((error: unknown) => {
         if (error instanceof AgenticSessionError) throw error;
-        throw new AgenticSessionError('adapter-failed', error instanceof Error ? error.message : 'finishInteractive failed.');
+        throw new AgenticSessionError('adapter-failed', 'finishInteractive', error instanceof Error ? error.message : 'finishInteractive failed.');
       });
   } catch (error) {
     if (error instanceof AgenticSessionError) {
       stopReason = error.kind;
-      result = syntheticResult(prepared, stopReason, error.message);
+      result = syntheticResult(prepared, stopReason, error.message, error.phase);
     } else {
       stopReason = 'adapter-failed';
       result = syntheticResult(prepared, stopReason, error instanceof Error ? error.message : 'agentic session failed.');
@@ -249,10 +260,25 @@ export async function startAndRunPagodaAgenticCallerSession(input: {
   provider?: PagodaCallerAgentProvider;
 }): Promise<PagodaAgenticLifecycleRunResult> {
   const { adapter, run, interaction, startedAt } = input;
-  const provider = input.provider ?? new DeterministicCallerAgentProvider();
+  let provider = input.provider ?? new DeterministicCallerAgentProvider();
   const startedMs = Date.parse(startedAt);
   const maxDurationMs = interaction.termination.maxDurationMs;
   try {
+    if (!input.provider && adapter.createCallerAgentProvider) {
+      provider = await withTimeout(
+        'callerProvider',
+        startedMs,
+        maxDurationMs,
+        async () => adapter.createCallerAgentProvider?.({ run, interaction }) as Promise<PagodaCallerAgentProvider>
+      ).catch((error: unknown) => {
+        if (error instanceof AgenticSessionError) throw error;
+        throw new AgenticSessionError(
+          'provider-failed',
+          'callerProvider',
+          error instanceof Error ? error.message : 'caller provider creation failed.'
+        );
+      });
+    }
     const prepared = await withTimeout(
       'startInteractive',
       startedMs,
@@ -264,7 +290,7 @@ export async function startAndRunPagodaAgenticCallerSession(input: {
     )
       .catch((error: unknown) => {
         if (error instanceof AgenticSessionError) throw error;
-        throw new AgenticSessionError('adapter-failed', error instanceof Error ? error.message : 'startInteractive failed.');
+        throw new AgenticSessionError('adapter-failed', 'startInteractive', error instanceof Error ? error.message : 'startInteractive failed.');
       });
     return {
       prepared,
@@ -280,7 +306,12 @@ export async function startAndRunPagodaAgenticCallerSession(input: {
     const stopReason: AgenticStopReason = error instanceof AgenticSessionError ? error.kind : 'adapter-failed';
     const message = error instanceof Error ? error.message : 'agentic session failed.';
     return {
-      result: syntheticResult(preparedRunForPlan(run), stopReason, message),
+      result: syntheticResult(
+        preparedRunForPlan(run),
+        stopReason,
+        message,
+        error instanceof AgenticSessionError ? error.phase : undefined
+      ),
       callerSession: callerSessionFor({
         interaction,
         provider,

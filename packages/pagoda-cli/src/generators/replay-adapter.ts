@@ -77,6 +77,7 @@ const adapter = {
       repairCodes: [],
       observedTraceSources: [],
       observedCorrelation: [],
+      observedOrdering: [],
       forbiddenToolNames: [],
       forbiddenEvents: [],
       forbiddenClaims: [],

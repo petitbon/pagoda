@@ -29,6 +29,7 @@ const passingObservation = (): CanonicalEvidenceObservationSet => {
     acceptedEvidenceCodes,
     observedTraceSources: ['transcript'],
     observedCorrelation: ['channel'],
+    observedOrdering: ['eventTime'],
     setupEvidenceCodes: ['DEMO_SETUP_READY'],
     evidenceRefsByCode: evidenceRefs([...acceptedEvidenceCodes, 'DEMO_SETUP_READY'])
   });

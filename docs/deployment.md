@@ -90,8 +90,8 @@ Examples:
 
 - latest tag `v0.1.0` -> next deployment tag `v0.1.1`
 - latest tag `v0.1.9` -> next deployment tag `v0.1.10`
-- package base version `0.2.0` and latest tag `v0.1.10` -> next deployment tag
-  `v0.2.0`
+- package base version `0.3.0` and latest tag `v0.2.10` -> next deployment tag
+  `v0.3.0`
 
 The workflow also handles manually pushed version tags. It skips publish steps
 for bot-created tag events so the automatic `main` release flow cannot

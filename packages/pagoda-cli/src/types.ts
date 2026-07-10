@@ -1,4 +1,4 @@
-import type { PagodaCallerSession, PagodaEvidenceMap, PagodaOutcomeContract, PagodaScenario } from '@petitbon/pagoda-core';
+import type { PagodaCallerSession, PagodaEvidenceMap, PagodaEvidenceScenarioStatus, PagodaOutcomeContract, PagodaScenario } from '@petitbon/pagoda-core';
 import type { PagodaAdapterManifest, PagodaTargetManifest } from '@petitbon/pagoda-adapter-sdk';
 import type { evaluatePagodaOutcomeContract } from '@petitbon/pagoda-core';
 import type { PagodaAdapterFailureDiagnostic } from '@petitbon/pagoda-runner';
@@ -40,6 +40,7 @@ export type PagodaRunCliResult = {
   scenarioId: string;
   channel: string;
   interactionCaseId?: string;
+  status: PagodaEvidenceScenarioStatus;
   adapterRunStatus: string;
   evidence: {
     accepted: number;
@@ -47,6 +48,7 @@ export type PagodaRunCliResult = {
     setup: number;
     traceSources: readonly string[];
     correlation: readonly string[];
+    ordering: readonly string[];
   };
   startedAt: string;
   completedAt: string;
@@ -56,6 +58,7 @@ export type PagodaRunCliResult = {
     stopReason: PagodaCallerSession['stopReason'];
   };
   adapterFailure?: PagodaAdapterFailureDiagnostic;
+  adapterFailures?: readonly PagodaAdapterFailureDiagnostic[];
   oracle: ReturnType<typeof evaluatePagodaOutcomeContract>;
 };
 

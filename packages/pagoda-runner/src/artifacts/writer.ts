@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import type {
   CanonicalEvidenceObservationSet,
@@ -8,6 +8,7 @@ import type {
 import type { PagodaRunPlan } from '@petitbon/pagoda-adapter-sdk';
 import { renderRunReport } from '../reports/markdown.js';
 import { sha256, stableJson } from './hashes.js';
+import { atomicWriteArtifactFile } from './integrity.js';
 import { type PagodaAdapterFailureDiagnostic, type PagodaRunArtifactManifest, runArtifactFiles } from './manifest.js';
 
 export async function writeRunArtifactBundle(input: {
@@ -22,6 +23,7 @@ export async function writeRunArtifactBundle(input: {
   callerSession?: PagodaCallerSession;
   logs?: { stdout?: string; stderr?: string };
   adapterFailure?: PagodaAdapterFailureDiagnostic;
+  adapterFailures?: readonly PagodaAdapterFailureDiagnostic[];
 }): Promise<PagodaRunArtifactManifest> {
   await mkdir(join(input.directory, 'logs'), { recursive: true });
   const files = runArtifactFiles;
@@ -35,7 +37,17 @@ export async function writeRunArtifactBundle(input: {
       }
     : undefined;
   const oracleStatus = input.oracleResult.status;
-  const status = oracleStatus === 'PASS' && agentic?.completed === false ? 'FAIL' : oracleStatus;
+  const adapterFailures = input.adapterFailures
+    ? [...input.adapterFailures]
+    : input.adapterFailure
+      ? [input.adapterFailure]
+      : [];
+  const adapterStatus = adapterFailures.some((failure) => failure.status === 'SETUP_FAILED')
+    ? 'SETUP_FAILED'
+    : adapterFailures.some((failure) => failure.status === 'OBSERVABILITY_FAILED')
+      ? 'OBSERVABILITY_FAILED'
+      : undefined;
+  const status = adapterStatus ?? (oracleStatus === 'PASS' && agentic?.completed === false ? 'FAIL' : oracleStatus);
   const manifest: PagodaRunArtifactManifest = {
     schemaVersion: 'pagoda.run-artifact',
     runId: input.plan.runId,
@@ -48,7 +60,7 @@ export async function writeRunArtifactBundle(input: {
     status,
     oracleStatus,
     ...(agentic ? { agentic } : {}),
-    ...(input.adapterFailure ? { adapterFailure: input.adapterFailure } : {}),
+    ...(adapterFailures[0] ? { adapterFailure: adapterFailures[0], adapterFailures } : {}),
     startedAt: input.startedAt,
     completedAt: input.completedAt,
     files: manifestFiles
@@ -69,15 +81,15 @@ export async function writeRunArtifactBundle(input: {
   for (const [relativePath, payload] of Object.entries(payloads)) {
     const text = `${stableJson(payload)}\n`;
     hashes[relativePath] = sha256(text);
-    await writeFile(join(input.directory, relativePath), text, 'utf8');
+    await atomicWriteArtifactFile(input.directory, relativePath, text);
   }
-  await writeFile(join(input.directory, files.stdout), input.logs?.stdout ?? '', 'utf8');
-  await writeFile(join(input.directory, files.stderr), input.logs?.stderr ?? '', 'utf8');
+  await atomicWriteArtifactFile(input.directory, files.stdout, input.logs?.stdout ?? '');
+  await atomicWriteArtifactFile(input.directory, files.stderr, input.logs?.stderr ?? '');
   hashes[files.stdout] = sha256(input.logs?.stdout ?? '');
   hashes[files.stderr] = sha256(input.logs?.stderr ?? '');
   const report = renderRunReport({ manifest, oracleResult: input.oracleResult });
-  await writeFile(join(input.directory, files.report), report, 'utf8');
+  await atomicWriteArtifactFile(input.directory, files.report, report);
   hashes[files.report] = sha256(report);
-  await writeFile(join(input.directory, files.hashes), `${stableJson(hashes)}\n`, 'utf8');
+  await atomicWriteArtifactFile(input.directory, files.hashes, `${stableJson(hashes)}\n`);
   return manifest;
 }

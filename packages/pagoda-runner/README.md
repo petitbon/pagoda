@@ -35,7 +35,8 @@ yarn workspace @petitbon/pagoda-runner test
 - artifact directory naming;
 - artifact bundle writing and reading;
 - run report rendering;
-- file hashing for reproducibility.
+- strict artifact path and SHA-256 verification;
+- target-neutral deterministic caller decisions with an adapter provider hook.
 
 The runner depends on target behavior only through `@petitbon/pagoda-adapter-sdk`.
 When a run plan includes materialized interaction, the runner persists
@@ -51,3 +52,7 @@ The CLI chooses the artifact root before calling the runner:
 - Pagoda development workspace: `artifacts/runs/`
 
 The runner writes the same reproducible artifact bundle in either mode.
+Readers reject non-canonical file mappings, path escapes, symbolic links,
+missing hashes, and hash mismatches before parsing proof payloads. Report
+regeneration verifies every non-report source before atomically replacing
+`report.md` and its hash.

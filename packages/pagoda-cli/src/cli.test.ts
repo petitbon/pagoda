@@ -211,6 +211,18 @@ describe('@petitbon/pagoda-cli', () => {
       contract.generatedFrom.pagodaCoreVersion = '0.0.0';
       await writeFile(contractPath, `${JSON.stringify(contract, null, 2)}\n`, 'utf8');
 
+      await expect(main(['validate', '--root', root])).rejects.toThrow(
+        'stale outcome contract; run pagoda compile'
+      );
+      await expect(main([
+        'run',
+        '--root', root,
+        '--scenario', 'SAMPLE-AGENT-SAFE-PROPOSAL-001',
+        '--reporter', 'json'
+      ])).rejects.toThrow('stale outcome contract; run pagoda compile');
+      await captureLogs(async () => {
+        await main(['compile', '--root', root]);
+      });
       const validateLogs = await captureLogs(async () => {
         await main(['validate', '--root', root]);
       });
@@ -341,6 +353,21 @@ describe('@petitbon/pagoda-cli', () => {
       expect(reporterLogs.join('\n')).toContain('(4/4 clauses, 4 accepted evidence)');
       expect(reporterLogs[reporterLogs.length - 1]).toContain('Scenarios  2 passed (2)');
       expect(reporterLogs[reporterLogs.length - 1]).toContain('Evidence  8 accepted | 0 rejected | 2 setup');
+
+      await rm(join(root, 'scenarios', 'sample-agent-safe-proposal-002'), {
+        recursive: true,
+        force: true
+      });
+      const pruneLogs = await captureLogs(async () => {
+        await main(['compile', '--root', root]);
+      });
+      expect(pruneLogs.join('\n')).toContain(
+        'removed contracts/SAMPLE-AGENT-SAFE-PROPOSAL-002.outcome-contract.json'
+      );
+      await expect(readFile(
+        join(root, 'contracts/SAMPLE-AGENT-SAFE-PROPOSAL-002.outcome-contract.json'),
+        'utf8'
+      )).rejects.toMatchObject({ code: 'ENOENT' });
     });
   });
 
@@ -387,6 +414,7 @@ const adapter = {
       repairCodes: [],
       observedTraceSources: [],
       observedCorrelation: [],
+      observedOrdering: [],
       forbiddenToolNames: [],
       forbiddenEvents: [],
       forbiddenClaims: [],
@@ -423,13 +451,182 @@ export default adapter;
       const manifest = JSON.parse(await readFile(join(run.artifactDirectory, 'run.json'), 'utf8'));
       expect(manifest.adapterFailure).toMatchObject(run.adapterFailure);
       const report = await readFile(join(run.artifactDirectory, 'report.md'), 'utf8');
-      expect(report).toContain('- Adapter Failure: execute category=dependency dependency=session-ledger - Session Ledger request failed: 500 Internal Server Error');
+      expect(report).toContain('- Adapter Failure: execute status=SETUP_FAILED category=dependency dependency=session-ledger - Session Ledger request failed: 500 Internal Server Error');
 
       const terminalLogs = await captureLogs(async () => {
         const result = await main(['run', '--root', root, '--scenario', 'SAMPLE-AGENT-SAFE-PROPOSAL-001', '--channel', 'browser-chat']);
         expect(result.exitCode).toBe(1);
       });
-      expect(terminalLogs.join('\n')).toContain('Adapter: execute  category=dependency  dependency=session-ledger  Session Ledger request failed: 500 Internal Server Error');
+      expect(terminalLogs.join('\n')).toContain('Adapter: execute  status=SETUP_FAILED  category=dependency  dependency=session-ledger  Session Ledger request failed: 500 Internal Server Error');
+    });
+  });
+
+  it('finishes delayed observation collection before cleanup and preserves an oracle pass', async () => {
+    await withTempDir(async (directory) => {
+      const root = join(directory, 'sample-agent', '.pagoda');
+      await captureLogs(async () => {
+        await main(['init', '--root', root, '--name', 'Sample Agent']);
+      });
+
+      await writeFile(join(root, 'adapters/sample-agent-local/index.mjs'), `
+const runs = new Map();
+let cleaned = false;
+
+const adapter = {
+  targetId: 'sample-agent',
+  async healthCheck() {
+    return { status: 'ready', message: 'cleanup-order adapter ready', evidenceSources: ['transcript'] };
+  },
+  async prepare(run) {
+    runs.set(run.runId, run);
+    return { runId: run.runId, targetId: run.targetId, artifactDirectory: run.artifactDirectory };
+  },
+  async execute(prepared) {
+    return { runId: prepared.runId, status: 'completed', stdout: 'completed', stderr: '', exitCode: 0 };
+  },
+  async collectObservations(result) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    if (cleaned) throw new Error('cleanup raced observation collection');
+    const run = runs.get(result.runId);
+    const channelContract = run.scenario.channelContracts.channels[run.channel];
+    const acceptedEvidenceCodes = [
+      ...run.scenario.evidence.acceptedEvidenceCodes,
+      ...run.scenario.evidence.requiredWorkflowOutcomes,
+      ...run.scenario.channelContracts.commonEvidenceCodes,
+      ...channelContract.requiredEvidenceCodes
+    ];
+    return {
+      acceptedEvidenceCodes,
+      rejectedEvidenceCodes: [],
+      repairCodes: [],
+      observedTraceSources: ['transcript'],
+      observedCorrelation: ['channel'],
+      observedOrdering: ['eventTime'],
+      forbiddenToolNames: [],
+      forbiddenEvents: [],
+      forbiddenClaims: [],
+      setupEvidenceCodes: run.scenario.fixture.setupEvidenceCodes,
+      evidenceRefsByCode: Object.fromEntries(
+        [...acceptedEvidenceCodes, ...run.scenario.fixture.setupEvidenceCodes]
+          .map((code) => [code, [\`delayed:\${code}\`]])
+      ),
+      collectorStatus: null
+    };
+  },
+  async cleanup(prepared) {
+    cleaned = true;
+    runs.delete(prepared.runId);
+    throw new Error('cleanup exploded after evidence was collected');
+  }
+};
+
+export default adapter;
+`, 'utf8');
+
+      let runExitCode = -1;
+      const logs = await captureLogs(async () => {
+        const result = await main([
+          'run',
+          '--root', root,
+          '--scenario', 'SAMPLE-AGENT-SAFE-PROPOSAL-001',
+          '--channel', 'browser-chat',
+          '--reporter', 'json'
+        ]);
+        runExitCode = result.exitCode;
+      });
+      const run = JSON.parse(logs.join('\n')) as {
+        artifactDirectory: string;
+        status: string;
+        adapterFailures: Array<{ phase: string; status: string; message: string }>;
+        oracle: { status: string };
+      };
+      expect(runExitCode).toBe(1);
+      expect(run.status).toBe('SETUP_FAILED');
+      expect(run.oracle.status).toBe('PASS');
+      expect(run.adapterFailures).toEqual([
+        expect.objectContaining({
+          phase: 'cleanup',
+          status: 'SETUP_FAILED',
+          message: 'cleanup exploded after evidence was collected'
+        })
+      ]);
+      const manifest = JSON.parse(await readFile(join(run.artifactDirectory, 'run.json'), 'utf8'));
+      expect(manifest).toMatchObject({
+        status: 'SETUP_FAILED',
+        oracleStatus: 'PASS'
+      });
+      const canonical = JSON.parse(await readFile(join(run.artifactDirectory, 'canonical-observation.json'), 'utf8'));
+      expect(canonical.collectorStatus).toBeNull();
+      expect(canonical.observedOrdering).toEqual(['eventTime']);
+    });
+  });
+
+  it('writes a diagnostic artifact when adapter execution throws', async () => {
+    await withTempDir(async (directory) => {
+      const root = join(directory, 'sample-agent', '.pagoda');
+      await captureLogs(async () => {
+        await main(['init', '--root', root, '--name', 'Sample Agent']);
+      });
+      await writeFile(join(root, 'adapters/sample-agent-local/index.mjs'), `
+const runs = new Map();
+
+const adapter = {
+  targetId: 'sample-agent',
+  async healthCheck() {
+    return { status: 'ready', message: 'throwing adapter ready', evidenceSources: [] };
+  },
+  async prepare(run) {
+    runs.set(run.runId, run);
+    return { runId: run.runId, targetId: run.targetId, artifactDirectory: run.artifactDirectory };
+  },
+  async execute() {
+    throw new Error('execute exploded');
+  },
+  async collectObservations() {
+    return {
+      acceptedEvidenceCodes: [],
+      rejectedEvidenceCodes: [],
+      repairCodes: [],
+      observedTraceSources: [],
+      observedCorrelation: [],
+      observedOrdering: [],
+      forbiddenToolNames: [],
+      forbiddenEvents: [],
+      forbiddenClaims: [],
+      setupEvidenceCodes: [],
+      evidenceRefsByCode: {},
+      collectorStatus: 'SETUP_FAILED'
+    };
+  },
+  async cleanup(prepared) {
+    runs.delete(prepared.runId);
+  }
+};
+
+export default adapter;
+`, 'utf8');
+
+      const logs = await captureLogs(async () => {
+        const result = await main([
+          'run',
+          '--root', root,
+          '--scenario', 'SAMPLE-AGENT-SAFE-PROPOSAL-001',
+          '--reporter', 'json'
+        ]);
+        expect(result.exitCode).toBe(1);
+      });
+      const run = JSON.parse(logs.join('\n')) as {
+        artifactDirectory: string;
+        adapterFailure: { phase: string; status: string; message: string };
+      };
+      expect(run.adapterFailure).toMatchObject({
+        phase: 'execute',
+        status: 'SETUP_FAILED',
+        message: 'execute exploded'
+      });
+      const manifest = JSON.parse(await readFile(join(run.artifactDirectory, 'run.json'), 'utf8'));
+      expect(manifest.adapterFailure).toMatchObject(run.adapterFailure);
+      expect(await readFile(join(run.artifactDirectory, 'logs/stderr.log'), 'utf8')).toContain('execute exploded');
     });
   });
 
@@ -797,7 +994,7 @@ const adapter = {
       turns: [{
         id: \`target-\${turn.id}\`,
         actor: 'assistant',
-        text: 'I have a safe next step available.'
+        text: 'I can offer a clearly explained safe next step.'
       }]
     };
   },
@@ -826,6 +1023,7 @@ const adapter = {
       repairCodes: [],
       observedTraceSources: ['transcript'],
       observedCorrelation: ['channel'],
+      observedOrdering: ['eventTime'],
       forbiddenToolNames: [],
       forbiddenEvents: [],
       forbiddenClaims: [],
@@ -854,10 +1052,12 @@ export default adapter;
         missingInteractionImplementation: false
       });
 
+      let runExitCode = -1;
       const runLogs = await captureLogs(async () => {
         const result = await main(['run', '--root', root, '--adapter', 'agentic-local', '--scenario', 'SAMPLE-AGENT-AGENTIC-RUN-001', '--reporter', 'json']);
-        expect(result.exitCode).toBe(0);
+        runExitCode = result.exitCode;
       });
+      expect(runExitCode, runLogs.join('\n')).toBe(0);
       const run = JSON.parse(runLogs.join('\n')) as {
         artifactDirectory: string;
         agentic: { completed: boolean; stopReason: string };
@@ -914,6 +1114,9 @@ export default adapter;
       const scenario = JSON.parse(await readFile(scenarioPath, 'utf8'));
       scenario.interaction.termination.maxTurns = 1;
       await writeFile(scenarioPath, `${JSON.stringify(scenario, null, 2)}\n`, 'utf8');
+      await captureLogs(async () => {
+        await main(['compile', '--root', root]);
+      });
 
       const adapterRoot = join(root, 'adapters', 'agentic-incomplete');
       await mkdir(adapterRoot, { recursive: true });
@@ -971,6 +1174,7 @@ const adapter = {
       repairCodes: [],
       observedTraceSources: ['transcript'],
       observedCorrelation: ['channel'],
+      observedOrdering: ['eventTime'],
       forbiddenToolNames: [],
       forbiddenEvents: [],
       forbiddenClaims: [],
@@ -1039,6 +1243,9 @@ export default adapter;
         const scenario = JSON.parse(await readFile(scenarioPath, 'utf8'));
         scenario.interaction.termination.maxDurationMs = mode === 'timeout' ? 1 : 1000;
         await writeFile(scenarioPath, `${JSON.stringify(scenario, null, 2)}\n`, 'utf8');
+        await captureLogs(async () => {
+          await main(['compile', '--root', root]);
+        });
 
         const adapterRoot = join(root, 'adapters', `agentic-${mode}`);
         await mkdir(adapterRoot, { recursive: true });
@@ -1094,6 +1301,7 @@ const adapter = {
       repairCodes: [],
       observedTraceSources: [],
       observedCorrelation: [],
+      observedOrdering: [],
       forbiddenToolNames: [],
       forbiddenEvents: [],
       forbiddenClaims: [],
@@ -1117,10 +1325,15 @@ export default adapter;
         const run = JSON.parse(runLogs.join('\n')) as {
           artifactDirectory: string;
           agentic: { completed: boolean; stopReason: string };
+          adapterFailure: { phase: string; status: string };
           oracle: { status: string };
         };
         expect(run.oracle.status).toBe('SETUP_FAILED');
         expect(run.agentic).toEqual({ completed: false, stopReason: mode });
+        expect(run.adapterFailure).toMatchObject({
+          phase: 'startInteractive',
+          status: 'SETUP_FAILED'
+        });
         const callerSession = JSON.parse(await readFile(join(run.artifactDirectory, 'caller-session.json'), 'utf8'));
         expect(callerSession.stopReason).toBe(mode);
         const manifest = JSON.parse(await readFile(join(run.artifactDirectory, 'run.json'), 'utf8'));

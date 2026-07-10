@@ -21,11 +21,11 @@ const gray = (text: string): string => color(text, 90);
 const bold = (text: string): string => color(text, 1);
 
 const isSuccessfulRun = (run: PagodaRunCliResult): boolean =>
-  run.oracle.status === 'PASS' && run.agentic?.completed !== false;
+  run.status === 'PASS';
 
 const statusMarker = (run: PagodaRunCliResult): string => {
   if (isSuccessfulRun(run)) return green('✓');
-  const status = run.oracle.status;
+  const status = run.status;
   if (status === 'FAIL') return red('×');
   if (status === 'OBSERVABILITY_FAILED') return yellow('!');
   return red('!');
@@ -59,17 +59,15 @@ const formatRunDetails = (run: PagodaRunCliResult): string[] => {
   const agenticFailure = run.agentic?.completed === false
     ? [`  Agentic session did not complete: ${run.agentic.stopReason}`]
     : [];
-  const adapterFailure = run.adapterFailure
-    ? [
-        [
-          `  Adapter: ${run.adapterFailure.phase}`,
-          `category=${run.adapterFailure.category}`,
-          run.adapterFailure.dependency ? `dependency=${run.adapterFailure.dependency}` : null,
-          run.adapterFailure.message
-        ].filter((part): part is string => part !== null).join('  ')
-      ]
-    : [];
-  if (run.oracle.status === 'PASS') return agenticFailure;
+  const adapterFailure = (run.adapterFailures ?? (run.adapterFailure ? [run.adapterFailure] : []))
+    .map((failure) => [
+      `  Adapter: ${failure.phase}`,
+      `status=${failure.status}`,
+      `category=${failure.category}`,
+      failure.dependency ? `dependency=${failure.dependency}` : null,
+      failure.message
+    ].filter((part): part is string => part !== null).join('  '));
+  if (run.status === 'PASS') return agenticFailure;
   const missingClauses = run.oracle.clauses.filter((clause) => clause.status === 'MISSING');
   const failedClauses = run.oracle.clauses.filter((clause) => clause.status === 'FAILED');
   return [
@@ -87,6 +85,9 @@ const formatRunDetails = (run: PagodaRunCliResult): string[] => {
       : null,
     run.oracle.missingCorrelation.length > 0
       ? `  Missing correlation: ${run.oracle.missingCorrelation.join(', ')}`
+      : null,
+    run.oracle.missingOrdering.length > 0
+      ? `  Missing ordering: ${run.oracle.missingOrdering.join(', ')}`
       : null
   ].filter((line): line is string => line !== null);
 };
@@ -94,7 +95,8 @@ const formatRunDetails = (run: PagodaRunCliResult): string[] => {
 const formatEvidenceSummary = (run: PagodaRunCliResult): string => {
   const traceSources = run.evidence.traceSources.length > 0 ? run.evidence.traceSources.join(', ') : 'none';
   const correlation = run.evidence.correlation.length > 0 ? run.evidence.correlation.join(', ') : 'none';
-  return `   Evidence  ${run.evidence.accepted} accepted | ${run.evidence.rejected} rejected | ${run.evidence.setup} setup | traces ${traceSources} | correlation ${correlation}`;
+  const ordering = run.evidence.ordering.length > 0 ? run.evidence.ordering.join(', ') : 'none';
+  return `   Evidence  ${run.evidence.accepted} accepted | ${run.evidence.rejected} rejected | ${run.evidence.setup} setup | traces ${traceSources} | correlation ${correlation} | ordering ${ordering}`;
 };
 
 const sumEvidence = (runs: readonly PagodaRunCliResult[]): { accepted: number; rejected: number; setup: number } =>

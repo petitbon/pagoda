@@ -16,10 +16,11 @@ export function renderRunReport(input: {
   const agenticLine = input.manifest.agentic
     ? `- Agentic Session: ${input.manifest.agentic.completed ? 'completed' : `incomplete (${input.manifest.agentic.stopReason})`}`
     : '';
-  const adapterFailure = input.manifest.adapterFailure;
-  const adapterFailureLine = adapterFailure
-    ? `- Adapter Failure: ${adapterFailure.phase} category=${adapterFailure.category}${adapterFailure.dependency ? ` dependency=${adapterFailure.dependency}` : ''} - ${adapterFailure.message}`
-    : '';
+  const adapterFailures = input.manifest.adapterFailures
+    ?? (input.manifest.adapterFailure ? [input.manifest.adapterFailure] : []);
+  const adapterFailureLines = adapterFailures.map((adapterFailure) =>
+    `- Adapter Failure: ${adapterFailure.phase} status=${adapterFailure.status} category=${adapterFailure.category}${adapterFailure.dependency ? ` dependency=${adapterFailure.dependency}` : ''} - ${adapterFailure.message}`
+  );
   const header = [
     `- Run: ${input.manifest.runId}`,
     `- Target: ${input.manifest.targetId}`,
@@ -29,7 +30,7 @@ export function renderRunReport(input: {
     `- Status: ${input.manifest.status}`,
     `- Oracle Status: ${oracleStatus}`,
     agenticLine || null,
-    adapterFailureLine || null,
+    ...adapterFailureLines,
     `- Started: ${input.manifest.startedAt}`,
     `- Completed: ${input.manifest.completedAt}`
   ].filter((line): line is string => line !== null).join('\n');

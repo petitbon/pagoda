@@ -1,6 +1,6 @@
 {
   "name": "@petitbon/pagoda-runner",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Target-neutral run plans, artifact bundles, replay support, and reports for Pagoda.",
   "license": "Apache-2.0",
   "repository": {
@@ -53,8 +53,8 @@
     "test:unit": "vitest run src --passWithNoTests"
   },
   "dependencies": {
-    "@petitbon/pagoda-adapter-sdk": "0.2.0",
-    "@petitbon/pagoda-core": "0.2.0"
+    "@petitbon/pagoda-adapter-sdk": "0.3.0",
+    "@petitbon/pagoda-core": "0.3.0"
   },
   "devDependencies": {
     "vitest": "^4.1.9"

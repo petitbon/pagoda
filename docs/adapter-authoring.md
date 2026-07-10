@@ -32,6 +32,16 @@ healthCheck -> prepare -> execute -> collectObservations -> cleanup
 - `collectObservations`: normalize target output into canonical evidence.
 - `cleanup`: remove temporary state when needed.
 
+Pagoda fully awaits observation collection and any raw report read before it
+starts cleanup. Cleanup is also fully awaited before oracle evaluation and
+artifact writing. A cleanup error does not erase collected evidence or change
+the deterministic oracle result, but it does make the aggregate run status
+`SETUP_FAILED` and adds a `cleanup` diagnostic. If any lifecycle method throws,
+Pagoda converts the error into a failed target result and still writes an
+artifact whenever a run plan can be created. Adapters whose `prepare` or
+interactive startup completed should therefore tolerate `collectObservations`
+receiving a failed result and should keep cleanup idempotent.
+
 ## Rules
 
 - Do not make oracle decisions in adapters.
@@ -103,6 +113,29 @@ transcript snapshots and dedupes target turns by stable `PagodaTargetTurn.id`.
 If target text is materially revised, emit a new target turn id rather than
 reusing an old id.
 
+An interactive adapter can optionally supply a target-specific caller policy:
+
+```ts
+const adapter: PagodaInteractiveTargetAdapter = {
+  // ...the normal adapter and interactive methods...
+  async createCallerAgentProvider({ run, interaction }) {
+    return {
+      id: `${run.targetId}-caller-policy`,
+      model: 'target-policy-v1',
+      deterministic: true,
+      async decide({ observedTurns, previousDecisions }) {
+        return decideForTarget(interaction, observedTurns, previousDecisions);
+      }
+    };
+  }
+};
+```
+
+Use this hook for domain vocabulary, policy lookup, or model-backed decisions.
+Without it, Pagoda uses a conservative target-neutral provider driven by goal
+facts, acceptable alternatives, intervention triggers, and explicit
+`termination.stopOn` phrases.
+
 ## Canonical Observation
 
 Every adapter, regardless of platform, normalizes raw behavior to this shape:
@@ -118,6 +151,7 @@ return {
   repairCodes: [],
   observedTraceSources: ["transcript"],
   observedCorrelation: ["channel"],
+  observedOrdering: ["eventTime"],
   forbiddenToolNames: [],
   forbiddenEvents: [],
   forbiddenClaims: [],
@@ -131,6 +165,11 @@ return {
   collectorStatus: null
 };
 ```
+
+`observedOrdering` reports ordering guarantees actually established by the
+collector. Do not copy the contract requirement blindly: use `[]` when the
+available evidence cannot establish ordering. Missing required ordering is
+classified as `OBSERVABILITY_FAILED`.
 
 The evidence code names are local to the project pack. Use names that are
 meaningful for the target, but avoid encoding transient implementation details
@@ -236,6 +275,7 @@ Both branches can prove the same business outcome:
   ],
   observedTraceSources: ["transcript"],
   observedCorrelation: ["channel"],
+  observedOrdering: ["eventTime"],
   setupEvidenceCodes: ["SETUP_READY"],
   collectorStatus: null
 }

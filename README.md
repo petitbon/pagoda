@@ -195,6 +195,10 @@ pagoda compile
 pagoda validate
 ```
 
+`pagoda run` applies the same strict freshness check and will not load an
+adapter until every generated contract matches its scenario, evidence map, and
+Pagoda core version.
+
 Finally, connect the adapter. Replace the stub observation in
 `.pagoda/adapters/product-agent-local/index.mjs` with evidence from your
 platform: API calls, tool calls, traces, logs, database state, browser output,
@@ -232,6 +236,7 @@ return {
   repairCodes: [],
   observedTraceSources: ['transcript'],
   observedCorrelation: ['channel'],
+  observedOrdering: ['eventTime'],
   forbiddenToolNames: [],
   forbiddenEvents: [],
   forbiddenClaims: [],

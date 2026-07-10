@@ -93,13 +93,33 @@ export async function loadTargetAdapter(input: {
   manifest: PagodaTargetManifest;
   adapterId?: string;
   channel?: string;
-}): Promise<{
+}): Promise<ResolvedTargetAdapter & {
   adapter: PagodaTargetAdapter;
+}> {
+  const resolved = await resolveTargetAdapter(input);
+  return {
+    ...resolved,
+    adapter: await importTargetAdapter({
+      targetId: input.manifest.id,
+      adapterPath: resolved.resolvedPath,
+      label: `${resolved.adapterId}:${resolved.entrypoint}`
+    })
+  };
+}
+
+export type ResolvedTargetAdapter = {
   adapterId: string;
   entrypoint: string;
   resolvedPath: string;
   manifest?: PagodaAdapterManifest;
-}> {
+};
+
+export async function resolveTargetAdapter(input: {
+  targetRoot: string;
+  manifest: PagodaTargetManifest;
+  adapterId?: string;
+  channel?: string;
+}): Promise<ResolvedTargetAdapter> {
   const { targetRoot, manifest, adapterId, channel } = input;
   const adapterManifests = await loadAdapterManifests(targetRoot, manifest);
   const selected = resolveAdapterManifest({
@@ -110,13 +130,13 @@ export async function loadTargetAdapter(input: {
     channel
   });
   if (selected) {
+    if (channel && selected.manifest.channel && selected.manifest.channel !== channel) {
+      throw new Error(
+        `${manifest.id}: adapter ${selected.manifest.id} declares channel ${selected.manifest.channel}, not ${channel}.`
+      );
+    }
     const adapterPath = join(selected.root, selected.manifest.entrypoint);
     return {
-      adapter: await importTargetAdapter({
-        targetId: manifest.id,
-        adapterPath,
-        label: `${selected.manifest.id}:${selected.manifest.entrypoint}`
-      }),
       adapterId: selected.manifest.id,
       entrypoint: selected.manifest.entrypoint,
       resolvedPath: adapterPath,
@@ -129,11 +149,6 @@ export async function loadTargetAdapter(input: {
   }
   const adapterPath = join(targetRoot, manifest.adapter.entrypoint);
   return {
-    adapter: await importTargetAdapter({
-      targetId: manifest.id,
-      adapterPath,
-      label: manifest.adapter.entrypoint
-    }),
     adapterId: 'legacy',
     entrypoint: manifest.adapter.entrypoint,
     resolvedPath: adapterPath

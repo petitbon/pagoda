@@ -36,6 +36,7 @@ describe('@petitbon/pagoda-adapter-sdk', () => {
           repairCodes: [],
           observedTraceSources: [],
           observedCorrelation: [],
+          observedOrdering: [],
           forbiddenToolNames: [],
           forbiddenEvents: [],
           forbiddenClaims: [],

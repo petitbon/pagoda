@@ -33,10 +33,7 @@ export type PagodaGeneratedInteractionSpec = {
 export type PagodaAgenticInterventionTrigger =
   | 'answer-question'
   | 'ask-clarification'
-  | 'correct-wrong-service'
-  | 'correct-wrong-staff'
-  | 'correct-wrong-date'
-  | 'correct-wrong-time'
+  | 'correct-conflicting-fact'
   | 'reject-out-of-policy'
   | 'accept-valid-option'
   | 'verify-confirmation'

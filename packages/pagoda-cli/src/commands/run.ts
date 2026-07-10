@@ -4,6 +4,8 @@ import { join, resolve } from 'node:path';
 import {
   canonicalEvidenceObservation,
   evaluatePagodaOutcomeContract,
+  assertValidPagodaEvidenceMaps,
+  assertValidPagodaScenarios,
   listPagodaInteractionCases,
   materializePagodaInteraction,
   type PagodaCallerSession,
@@ -14,6 +16,7 @@ import {
 } from '@petitbon/pagoda-core';
 import type {
   PagodaInteractiveTargetAdapter,
+  PagodaRunPlan,
   PagodaTargetAdapter,
   PagodaTargetManifest,
   PreparedRun,
@@ -31,8 +34,13 @@ import {
   missingAdapterEvidenceCapabilities,
   missingAdapterInteractionCapabilities
 } from '../target-pack/capabilities.js';
-import { loadTargetAdapter } from '../target-pack/adapters.js';
+import {
+  importTargetAdapter,
+  resolveTargetAdapter,
+  type ResolvedTargetAdapter
+} from '../target-pack/adapters.js';
 import { loadContracts, loadEvidenceMaps, loadScenarios } from '../target-pack/files.js';
+import { contractFreshnessErrors } from '../target-pack/contracts.js';
 import { loadTargetManifest } from '../target-pack/manifests.js';
 import {
   formatRunProgress,
@@ -42,20 +50,25 @@ import {
 } from '../reporting/terminal.js';
 
 const isSuccessfulRun = (run: PagodaRunCliResult): boolean =>
-  run.oracle.status === 'PASS' && run.agentic?.completed !== false;
-
-const isSyntheticAgenticFailureResult = (result: TargetRunResult): boolean =>
-  result.status === 'failed' && typeof result.metadata?.agenticStopReason === 'string';
+  run.status === 'PASS';
 
 const adapterFailurePhases = new Set<PagodaAdapterFailureDiagnostic['phase']>([
+  'loadAdapter',
   'healthCheck',
   'prepare',
+  'callerProvider',
   'startInteractive',
   'observeTarget',
   'sendCallerTurn',
   'finishInteractive',
   'execute',
-  'collectObservations'
+  'collectObservations',
+  'cleanup'
+]);
+
+const adapterFailureStatuses = new Set<PagodaAdapterFailureDiagnostic['status']>([
+  'SETUP_FAILED',
+  'OBSERVABILITY_FAILED'
 ]);
 
 const adapterFailureCategories = new Set<PagodaAdapterFailureDiagnostic['category']>([
@@ -78,15 +91,26 @@ const cleanDiagnosticMessage = (message: string): string => {
 const stringFromMetadata = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
 
+const failureStatusForPhase = (
+  phase: PagodaAdapterFailureDiagnostic['phase']
+): PagodaAdapterFailureDiagnostic['status'] =>
+  phase === 'observeTarget' || phase === 'collectObservations'
+    ? 'OBSERVABILITY_FAILED'
+    : 'SETUP_FAILED';
+
 const explicitAdapterFailureFromMetadata = (metadata: TargetRunResult['metadata']): PagodaAdapterFailureDiagnostic | undefined => {
   const candidate = isRecord(metadata?.adapterFailure) ? metadata.adapterFailure : null;
   if (!candidate) return undefined;
   const phase = stringFromMetadata(candidate.phase);
   const category = stringFromMetadata(candidate.category);
+  const status = stringFromMetadata(candidate.status);
   const message = stringFromMetadata(candidate.message);
   if (!phase || !adapterFailurePhases.has(phase as PagodaAdapterFailureDiagnostic['phase']) || !message) return undefined;
   return {
     phase: phase as PagodaAdapterFailureDiagnostic['phase'],
+    status: status && adapterFailureStatuses.has(status as PagodaAdapterFailureDiagnostic['status'])
+      ? status as PagodaAdapterFailureDiagnostic['status']
+      : failureStatusForPhase(phase as PagodaAdapterFailureDiagnostic['phase']),
     category: category && adapterFailureCategories.has(category as PagodaAdapterFailureDiagnostic['category'])
       ? category as PagodaAdapterFailureDiagnostic['category']
       : 'unknown',
@@ -138,6 +162,10 @@ const inferAdapterFailurePhase = (
   if (explicitPhase && adapterFailurePhases.has(explicitPhase as PagodaAdapterFailureDiagnostic['phase'])) {
     return explicitPhase as PagodaAdapterFailureDiagnostic['phase'];
   }
+  const agenticPhase = stringFromMetadata(result.metadata?.agenticFailurePhase);
+  if (agenticPhase && adapterFailurePhases.has(agenticPhase as PagodaAdapterFailureDiagnostic['phase'])) {
+    return agenticPhase as PagodaAdapterFailureDiagnostic['phase'];
+  }
   if (callerSession?.stopReason === 'adapter-failed') {
     return callerSession.turns.length === 0 ? 'startInteractive' : 'sendCallerTurn';
   }
@@ -157,13 +185,50 @@ const adapterFailureFromResult = (
     stringFromMetadata(result.stdout) ??
     `adapter returned ${result.status}`;
   const message = cleanDiagnosticMessage(rawMessage);
+  const phase = inferAdapterFailurePhase(result, callerSession);
   return {
-    phase: inferAdapterFailurePhase(result, callerSession),
+    phase,
+    status: failureStatusForPhase(phase),
     category: inferAdapterFailureCategory(message),
     ...(inferAdapterFailureDependency(message) ? { dependency: inferAdapterFailureDependency(message) } : {}),
     message
   };
 };
+
+const errorLogText = (error: unknown): string =>
+  error instanceof Error ? error.stack ?? error.message : String(error);
+
+const adapterFailureFromError = (
+  phase: PagodaAdapterFailureDiagnostic['phase'],
+  error: unknown,
+  status = failureStatusForPhase(phase)
+): PagodaAdapterFailureDiagnostic => {
+  const rawMessage = error instanceof Error ? error.message : String(error);
+  const message = cleanDiagnosticMessage(rawMessage || `${phase} failed`);
+  return {
+    phase,
+    status,
+    category: inferAdapterFailureCategory(message),
+    ...(inferAdapterFailureDependency(message) ? { dependency: inferAdapterFailureDependency(message) } : {}),
+    message
+  };
+};
+
+const syntheticTargetRunResult = (
+  plan: PagodaRunPlan,
+  failure: PagodaAdapterFailureDiagnostic,
+  error: unknown
+): TargetRunResult => ({
+  runId: plan.runId,
+  status: 'failed',
+  stdout: '',
+  stderr: errorLogText(error),
+  exitCode: 1,
+  metadata: {
+    adapterFailure: failure,
+    adapterFailurePhase: failure.phase
+  }
+});
 
 export async function runTargetScenario(input: {
   context: PagodaRootContext;
@@ -191,6 +256,15 @@ export async function runTargetScenario(input: {
   const scenarios = await loadScenarios(root, manifest);
   const maps = await loadEvidenceMaps(root, manifest);
   const contracts = await loadContracts(root, manifest);
+  assertValidPagodaScenarios(scenarios.map(({ scenario }) => scenario));
+  assertValidPagodaEvidenceMaps(
+    maps.map(({ evidenceMap }) => evidenceMap),
+    scenarios.map(({ scenario }) => scenario)
+  );
+  const freshnessErrors = contractFreshnessErrors({ manifest, scenarios, maps, contracts });
+  if (freshnessErrors.length > 0) {
+    throw new Error(`Invalid Pagoda project ${context.targetId}:\n${freshnessErrors.join('\n')}`);
+  }
 
   const interactionJobsFor = (scenario: PagodaScenario, selectedChannel: string): Array<PagodaMaterializedInteraction | undefined> => {
     if (!scenario.interaction) {
@@ -216,56 +290,68 @@ export async function runTargetScenario(input: {
     })];
   };
 
-  const runOne = async (selectedScenarioId: string, selectedChannel: string, interaction: PagodaMaterializedInteraction | undefined) => {
-    const scenario = scenarios.find((entry) => entry.scenario.id === selectedScenarioId)?.scenario;
-    if (!scenario) throw new Error(`${context.targetId}: scenario ${selectedScenarioId} does not exist.`);
-    const evidenceMap = maps.find((entry) => entry.evidenceMap.scenarioId === selectedScenarioId)?.evidenceMap;
-    if (!evidenceMap) throw new Error(`${context.targetId}: scenario ${selectedScenarioId} has no evidence map.`);
-    const contract = contracts.find((entry) => entry.contract.scenarioId === selectedScenarioId)?.contract;
-    if (!contract) throw new Error(`${context.targetId}: scenario ${selectedScenarioId} has no outcome contract.`);
-    if (!scenario.labels.channels.includes(selectedChannel as never)) {
-      throw new Error(`${context.targetId}: scenario ${selectedScenarioId} does not declare channel ${selectedChannel}.`);
+  type PendingRunJob = {
+    scenarioId: string;
+    channel: string;
+    interaction: PagodaMaterializedInteraction | undefined;
+  };
+  type PreparedRunJob = PendingRunJob & {
+    scenario: PagodaScenario;
+    evidenceMap: PagodaEvidenceMap;
+    contract: PagodaOutcomeContract;
+    adapter: ResolvedTargetAdapter;
+  };
+
+  const prepareJob = async (job: PendingRunJob): Promise<PreparedRunJob> => {
+    const scenario = scenarios.find((entry) => entry.scenario.id === job.scenarioId)?.scenario;
+    if (!scenario) throw new Error(`${context.targetId}: scenario ${job.scenarioId} does not exist.`);
+    const evidenceMap = maps.find((entry) => entry.evidenceMap.scenarioId === job.scenarioId)?.evidenceMap;
+    if (!evidenceMap) throw new Error(`${context.targetId}: scenario ${job.scenarioId} has no evidence map.`);
+    const contract = contracts.find((entry) => entry.contract.scenarioId === job.scenarioId)?.contract;
+    if (!contract) throw new Error(`${context.targetId}: scenario ${job.scenarioId} has no outcome contract.`);
+    if (!scenario.labels.channels.includes(job.channel as never)) {
+      throw new Error(`${context.targetId}: scenario ${job.scenarioId} does not declare channel ${job.channel}.`);
     }
-    const loadedAdapter = await loadTargetAdapter({
+    const adapter = await resolveTargetAdapter({
       targetRoot: root,
       manifest,
       adapterId: input.adapterId,
-      channel: selectedChannel
+      channel: job.channel
     });
-    const health = await loadedAdapter.adapter.healthCheck();
-    if (health.status === 'unavailable') throw new Error(health.message ?? `${context.targetId}: adapter unavailable.`);
-    const missingCapabilities = missingAdapterEvidenceCapabilities(loadedAdapter.manifest, scenario, selectedChannel);
+    const missingCapabilities = missingAdapterEvidenceCapabilities(adapter.manifest, scenario, job.channel);
     if (missingCapabilities.length > 0) {
       throw new Error([
-        `${context.targetId}: adapter ${loadedAdapter.adapterId} cannot run ${selectedScenarioId} on ${selectedChannel}.`,
+        `${context.targetId}: adapter ${adapter.adapterId} cannot run ${job.scenarioId} on ${job.channel}.`,
         `Missing produced evidence code(s): ${missingCapabilities.join(', ')}.`,
         'Update the adapter pagoda.adapter.json producesEvidenceCodes or choose a different adapter.'
       ].join('\n'));
     }
-    const missingInteractionModes = missingAdapterInteractionCapabilities(loadedAdapter.manifest, scenario);
+    const missingInteractionModes = missingAdapterInteractionCapabilities(adapter.manifest, scenario);
     if (missingInteractionModes.length > 0) {
       throw new Error([
-        `${context.targetId}: adapter ${loadedAdapter.adapterId} cannot run ${selectedScenarioId} with ${missingInteractionModes.join(', ')} interaction.`,
+        `${context.targetId}: adapter ${adapter.adapterId} cannot run ${job.scenarioId} with ${missingInteractionModes.join(', ')} interaction.`,
         'Update the adapter pagoda.adapter.json interactionModes or choose an interactive adapter.'
       ].join('\n'));
     }
+    return { ...job, scenario, evidenceMap, contract, adapter };
+  };
 
-    return runLoadedTargetScenario({
+  const runOne = async (job: PreparedRunJob): Promise<PagodaRunCliResult> =>
+    runLoadedTargetScenario({
       context,
       root,
       manifest,
-      adapter: loadedAdapter.adapter,
-      scenario,
-      evidenceMap,
-      contract,
-      selectedChannel,
+      adapter: job.adapter,
+      scenario: job.scenario,
+      evidenceMap: job.evidenceMap,
+      contract: job.contract,
+      selectedChannel: job.channel,
       seed: input.seed,
-      interaction,
+      interaction: job.interaction,
       artifactDirectory: input.artifactDirectory
     });
-  };
 
-  const runJobs = async (jobs: Array<{ scenarioId: string; channel: string; interaction: PagodaMaterializedInteraction | undefined }>): Promise<PagodaRunCliResult[]> => {
+  const runJobs = async (jobs: PreparedRunJob[]): Promise<PagodaRunCliResult[]> => {
     const results = new Array<PagodaRunCliResult>(jobs.length);
     let nextIndex = 0;
     const workerCount = Math.min(input.concurrency, jobs.length);
@@ -274,7 +360,7 @@ export async function runTargetScenario(input: {
         const index = nextIndex;
         nextIndex += 1;
         const job = jobs[index];
-        const run = await runOne(job.scenarioId, job.channel, job.interaction);
+        const run = await runOne(job);
         results[index] = run;
         if (input.reporter !== 'json') input.io.stdout(formatRunProgress(run, context));
       }
@@ -300,10 +386,11 @@ export async function runTargetScenario(input: {
     if (runnableJobs.length === 0) {
       throw new Error(`${context.targetId}: no active scenarios${channel ? ` declare channel ${channel}` : ''}.`);
     }
+    const preparedJobs = await Promise.all(runnableJobs.map(prepareJob));
     if (input.reporter !== 'json') {
       input.io.stdout(formatRunSummaryHeader({ projectId: context.targetId, channel: channel ?? null }, context));
     }
-    const runs = await runJobs(runnableJobs);
+    const runs = await runJobs(preparedJobs);
     const passed = runs.filter(isSuccessfulRun).length;
     const failed = runs.length - passed;
     const summary: PagodaRunCliSummary = {
@@ -337,17 +424,18 @@ export async function runTargetScenario(input: {
   }
   if (runnableJobs.length === 1) {
     const job = runnableJobs[0];
-    const run = await runOne(job.scenarioId, job.channel, job.interaction);
+    const run = await runOne(await prepareJob(job));
     input.io.stdout(input.reporter === 'json' ? JSON.stringify(run, null, 2) : formatRunResult(run, context));
     return { exitCode: isSuccessfulRun(run) ? 0 : 1 };
   }
 
   const summaryStartedAt = new Date().toISOString();
   const summaryStartedMs = Date.now();
+  const preparedJobs = await Promise.all(runnableJobs.map(prepareJob));
   if (input.reporter !== 'json') {
     input.io.stdout(formatRunSummaryHeader({ projectId: context.targetId, channel: null }, context));
   }
-  const runs = await runJobs(runnableJobs);
+  const runs = await runJobs(preparedJobs);
   const passed = runs.filter(isSuccessfulRun).length;
   const failed = runs.length - passed;
   const summary: PagodaRunCliSummary = {
@@ -369,7 +457,7 @@ async function runLoadedTargetScenario(input: {
   context: PagodaRootContext;
   root: string;
   manifest: PagodaTargetManifest;
-  adapter: PagodaTargetAdapter;
+  adapter: ResolvedTargetAdapter;
   scenario: PagodaScenario;
   evidenceMap: PagodaEvidenceMap;
   contract: PagodaOutcomeContract;
@@ -378,7 +466,7 @@ async function runLoadedTargetScenario(input: {
   interaction: PagodaMaterializedInteraction | undefined;
   artifactDirectory: string | undefined;
 }): Promise<PagodaRunCliResult> {
-  const { context, root, manifest, adapter, scenario, evidenceMap, contract, selectedChannel } = input;
+  const { context, root, manifest, scenario, evidenceMap, contract, selectedChannel } = input;
   const scenarioId = scenario.id;
   const startedAt = new Date().toISOString();
   const startedMs = Date.now();
@@ -407,101 +495,205 @@ async function runLoadedTargetScenario(input: {
     seed: input.interaction?.seed ?? input.seed,
     interaction: input.interaction
   });
-  const finishRun = async (result: TargetRunResult, callerSession?: PagodaCallerSession): Promise<PagodaRunCliResult> => {
-    const adapterFailure = adapterFailureFromResult(result, callerSession);
-    const observations = await adapter.collectObservations(result).catch((error: unknown) => {
-      if (!callerSession || !isSyntheticAgenticFailureResult(result)) throw error;
-      return canonicalEvidenceObservation({
-        collectorStatus: 'SETUP_FAILED',
-        evidenceRefsByCode: {
-          AGENTIC_SESSION_FAILED: [
-            error instanceof Error ? error.message : 'adapter could not collect observations for failed agentic session'
-          ]
-        }
-      });
-    });
-    const evaluation = evaluatePagodaOutcomeContract({
-      contract,
-      channel: selectedChannel as never,
-      caseId: plan.interaction?.caseId ?? scenario.harness.selectedCase ?? scenario.id,
-      observations
-    });
-    const rawObservations = result.reportFile && existsSync(result.reportFile)
-      ? JSON.parse(await readFile(result.reportFile, 'utf8')) as unknown
-      : {
-          runId: result.runId,
-          status: result.status,
-          exitCode: result.exitCode,
-          reportFile: result.reportFile,
-          metadata: result.metadata,
-          stdout: result.stdout,
-          stderr: result.stderr
-        };
-    const completedAt = new Date().toISOString();
-    await writeRunArtifactBundle({
-      directory: artifactDirectory,
-      plan,
-      targetManifest: manifest,
-      canonicalObservation: observations,
-      oracleResult: evaluation,
-      rawObservations,
-      callerSession,
-      logs: { stdout: result.stdout, stderr: result.stderr },
-      adapterFailure,
-      startedAt,
-      completedAt
-    });
-    const agentic = callerSession
-      ? {
-          completed: callerSession.stopReason === 'completed',
-          stopReason: callerSession.stopReason
-        }
-      : undefined;
-    return {
-      runId: plan.runId,
-      artifactDirectory,
-      projectId: context.targetId,
-      scenarioId,
-      channel: selectedChannel,
-      interactionCaseId: plan.interaction?.caseId,
-      adapterRunStatus: result.status,
-      evidence: {
-        accepted: observations.acceptedEvidenceCodes.length,
-        rejected: observations.rejectedEvidenceCodes.length,
-        setup: observations.setupEvidenceCodes.length,
-        traceSources: observations.observedTraceSources,
-        correlation: observations.observedCorrelation
-      },
-      startedAt,
-      completedAt,
-      durationMs: Date.now() - startedMs,
-      ...(agentic ? { agentic } : {}),
-      ...(adapterFailure ? { adapterFailure } : {}),
-      oracle: evaluation
-    };
+  const failures: PagodaAdapterFailureDiagnostic[] = [];
+  const lifecycleErrors: string[] = [];
+  const addFailure = (failure: PagodaAdapterFailureDiagnostic, error?: unknown): void => {
+    const existingIndex = failures.findIndex((existing) =>
+      existing.phase === failure.phase && existing.message === failure.message
+    );
+    if (existingIndex === -1) failures.push(failure);
+    else failures[existingIndex] = failure;
+    if (error !== undefined) lifecycleErrors.push(errorLogText(error));
   };
 
+  let adapter: PagodaTargetAdapter | undefined;
   let prepared: PreparedRun | undefined;
+  let result: TargetRunResult | undefined;
+  let callerSession: PagodaCallerSession | undefined;
+  let observations: ReturnType<typeof canonicalEvidenceObservation> | undefined;
+
   try {
+    adapter = await importTargetAdapter({
+      targetId: manifest.id,
+      adapterPath: input.adapter.resolvedPath,
+      label: `${input.adapter.adapterId}:${input.adapter.entrypoint}`
+    });
+  } catch (error) {
+    const failure = adapterFailureFromError('loadAdapter', error);
+    addFailure(failure, error);
+    result = syntheticTargetRunResult(plan, failure, error);
+  }
+
+  if (adapter && failures.length === 0) {
+    try {
+      const health = await adapter.healthCheck();
+      if (health.status === 'unavailable') {
+        throw new Error(health.message ?? `${context.targetId}: adapter unavailable.`);
+      }
+    } catch (error) {
+      const failure = adapterFailureFromError('healthCheck', error);
+      addFailure(failure, error);
+      result = syntheticTargetRunResult(plan, failure, error);
+    }
+  }
+
+  if (adapter && failures.length === 0) {
     if (plan.interaction?.mode === 'agentic') {
       if (!isInteractiveTargetAdapter(adapter)) {
-        throw new Error(`${context.targetId}: selected adapter declares agentic interaction but does not implement PagodaInteractiveTargetAdapter.`);
+        const error = new Error(
+          `${context.targetId}: selected adapter declares agentic interaction but does not implement PagodaInteractiveTargetAdapter.`
+        );
+        const failure = adapterFailureFromError('startInteractive', error);
+        addFailure(failure, error);
+        result = syntheticTargetRunResult(plan, failure, error);
+      } else {
+        const agentic = await startAndRunPagodaAgenticCallerSession({
+          adapter,
+          run: plan,
+          interaction: plan.interaction,
+          startedAt
+        });
+        prepared = agentic.prepared;
+        result = agentic.result;
+        callerSession = agentic.callerSession;
       }
-      const agentic = await startAndRunPagodaAgenticCallerSession({
-        adapter,
-        run: plan,
-        interaction: plan.interaction,
-        startedAt
-      });
-      prepared = agentic.prepared;
-      return finishRun(agentic.result, agentic.callerSession);
+    } else {
+      try {
+        prepared = await adapter.prepare(plan);
+      } catch (error) {
+        const failure = adapterFailureFromError('prepare', error);
+        addFailure(failure, error);
+        result = syntheticTargetRunResult(plan, failure, error);
+      }
+      if (prepared) {
+        try {
+          result = await adapter.execute(prepared);
+        } catch (error) {
+          const failure = adapterFailureFromError('execute', error);
+          addFailure(failure, error);
+          result = syntheticTargetRunResult(plan, failure, error);
+        }
+      }
     }
-
-    prepared = await adapter.prepare(plan);
-    return finishRun(await adapter.execute(prepared));
-  } finally {
-    if (prepared) await adapter.cleanup?.(prepared);
   }
+
+  if (!result) {
+    const error = new Error('Adapter lifecycle ended without a target run result.');
+    const failure = adapterFailureFromError('execute', error);
+    addFailure(failure, error);
+    result = syntheticTargetRunResult(plan, failure, error);
+  }
+
+  const preliminaryResultFailure = adapterFailureFromResult(result, callerSession);
+  if (preliminaryResultFailure) addFailure(preliminaryResultFailure);
+
+  if (adapter && prepared) {
+    try {
+      observations = canonicalEvidenceObservation(await adapter.collectObservations(result));
+    } catch (error) {
+      const failure = adapterFailureFromError('collectObservations', error);
+      addFailure(failure, error);
+      observations = canonicalEvidenceObservation({
+        collectorStatus: 'OBSERVABILITY_FAILED',
+        evidenceRefsByCode: {
+          OBSERVATION_COLLECTION_FAILED: [failure.message]
+        }
+      });
+    }
+  }
+
+  if (!observations) {
+    const collectorStatus = failures.some((failure) => failure.status === 'SETUP_FAILED')
+      ? 'SETUP_FAILED'
+      : 'OBSERVABILITY_FAILED';
+    observations = canonicalEvidenceObservation({ collectorStatus });
+  }
+
+  const resultFailure = adapterFailureFromResult(result, callerSession);
+  if (resultFailure) addFailure(resultFailure);
+
+  const fallbackRawObservations = {
+    runId: result.runId,
+    status: result.status,
+    exitCode: result.exitCode,
+    reportFile: result.reportFile,
+    metadata: result.metadata,
+    stdout: result.stdout,
+    stderr: result.stderr
+  };
+  let rawObservations: unknown = fallbackRawObservations;
+  if (result.reportFile && existsSync(result.reportFile)) {
+    try {
+      rawObservations = JSON.parse(await readFile(result.reportFile, 'utf8')) as unknown;
+    } catch (error) {
+      const failure = adapterFailureFromError('collectObservations', error);
+      addFailure(failure, error);
+      rawObservations = {
+        ...fallbackRawObservations,
+        reportReadError: failure.message
+      };
+    }
+  }
+
+  if (adapter && prepared && adapter.cleanup) {
+    try {
+      await adapter.cleanup(prepared);
+    } catch (error) {
+      addFailure(adapterFailureFromError('cleanup', error), error);
+    }
+  }
+
+  const evaluation = evaluatePagodaOutcomeContract({
+    contract,
+    channel: selectedChannel as never,
+    caseId: plan.interaction?.caseId ?? scenario.harness.selectedCase ?? scenario.id,
+    observations
+  });
+  const completedAt = new Date().toISOString();
+  const stderr = [result.stderr, ...lifecycleErrors].filter(Boolean).join('\n');
+  const artifactManifest = await writeRunArtifactBundle({
+    directory: artifactDirectory,
+    plan,
+    targetManifest: manifest,
+    canonicalObservation: observations,
+    oracleResult: evaluation,
+    rawObservations,
+    callerSession,
+    logs: { stdout: result.stdout, stderr },
+    adapterFailures: failures,
+    startedAt,
+    completedAt
+  });
+  const agentic = callerSession
+    ? {
+        completed: callerSession.stopReason === 'completed',
+        stopReason: callerSession.stopReason
+      }
+    : undefined;
+  return {
+    runId: plan.runId,
+    artifactDirectory,
+    projectId: context.targetId,
+    scenarioId,
+    channel: selectedChannel,
+    interactionCaseId: plan.interaction?.caseId,
+    status: artifactManifest.status,
+    adapterRunStatus: result.status,
+    evidence: {
+      accepted: observations.acceptedEvidenceCodes.length,
+      rejected: observations.rejectedEvidenceCodes.length,
+      setup: observations.setupEvidenceCodes.length,
+      traceSources: observations.observedTraceSources,
+      correlation: observations.observedCorrelation,
+      ordering: observations.observedOrdering
+    },
+    startedAt,
+    completedAt,
+    durationMs: Date.now() - startedMs,
+    ...(agentic ? { agentic } : {}),
+    ...(failures[0] ? { adapterFailure: failures[0], adapterFailures: failures } : {}),
+    oracle: evaluation
+  };
 }
 
 function isInteractiveTargetAdapter(adapter: PagodaTargetAdapter): adapter is PagodaInteractiveTargetAdapter {

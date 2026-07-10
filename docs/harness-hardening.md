@@ -23,7 +23,7 @@ broken test environment cannot masquerade as an outcome failure or pass.
 
 - Missing fixture, credential, target session, or seed data:
   `SETUP_FAILED`.
-- Missing trace source, missing correlation, or broken evidence collector:
+- Missing trace source, correlation, ordering, or a broken evidence collector:
   `OBSERVABILITY_FAILED`.
 - Observable violation of required outcome or forbidden side effect:
   `FAIL`.

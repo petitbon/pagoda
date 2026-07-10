@@ -13,7 +13,12 @@ import { targetPackGitignore } from '../generators/target-pack-assets.js';
 import { stableJson } from '../shared/json.js';
 import { pagodaVersion } from '../shared/version.js';
 import { loadAdapterManifests } from '../target-pack/adapters.js';
-import { contractPathForScenario, projectContracts } from '../target-pack/contracts.js';
+import {
+  contractPathForScenario,
+  projectContracts,
+  removeUnexpectedOutcomeContracts,
+  resolveContainedTargetPath
+} from '../target-pack/contracts.js';
 import { resolveRootContext } from '../target-pack/context.js';
 import { loadEvidenceMaps, loadScenarios } from '../target-pack/files.js';
 import { buildEvidenceRegistry } from '../target-pack/registry.js';
@@ -21,6 +26,7 @@ import { buildEvidenceRegistry } from '../target-pack/registry.js';
 type UpdateSummary = {
   updated: string[];
   created: string[];
+  removed: string[];
   skipped: string[];
 };
 
@@ -92,7 +98,7 @@ export async function updateTargetPack(
     throw new Error('Pagoda target pack does not exist. Run pagoda init first.');
   }
   const { projectRoot, targetRoot: root, manifestPath, targetId } = context;
-  const summary: UpdateSummary = { updated: [], created: [], skipped: [] };
+  const summary: UpdateSummary = { updated: [], created: [], removed: [], skipped: [] };
   const manifest = patchManifest(context.manifest);
   const manifestText = `${stableJson(manifest)}\n`;
   await writeTextIfChanged(manifestPath, manifestText, summary, relative(projectRoot, manifestPath));
@@ -110,10 +116,19 @@ export async function updateTargetPack(
   const maps = await loadEvidenceMaps(root, manifest);
   assertValidPagodaScenarios(scenarios.map(({ scenario }) => scenario));
   assertValidPagodaEvidenceMaps(maps.map(({ evidenceMap }) => evidenceMap), scenarios.map(({ scenario }) => scenario));
-  for (const contract of projectContracts(scenarios, maps)) {
-    const path = join(root, contractPathForScenario(manifest, contract));
+  const projectedContracts = projectContracts(scenarios, maps);
+  for (const contract of projectedContracts) {
+    const path = resolveContainedTargetPath(root, contractPathForScenario(manifest, contract));
     await writeTextIfChanged(path, `${stableJson(contract)}\n`, summary, relative(projectRoot, path));
   }
+  const removedContracts = await removeUnexpectedOutcomeContracts({
+    targetRoot: root,
+    manifest,
+    projected: projectedContracts
+  });
+  summary.removed.push(...removedContracts.map((path) =>
+    relative(projectRoot, resolveContainedTargetPath(root, path))
+  ));
 
   const adapters = await loadAdapterManifests(root, manifest);
   if (manifest.paths.evidenceRegistry) {
@@ -143,9 +158,10 @@ export async function updateTargetPack(
     root,
     projectId: targetId,
     pagodaVersion,
-    status: summary.updated.length > 0 || summary.created.length > 0 ? 'updated' : 'up-to-date',
+    status: summary.updated.length > 0 || summary.created.length > 0 || summary.removed.length > 0 ? 'updated' : 'up-to-date',
     updated: summary.updated,
     created: summary.created,
+    removed: summary.removed,
     skipped: summary.skipped,
     ignoredOptions: [...(input.ignoredOptions ?? [])]
   }, null, 2));

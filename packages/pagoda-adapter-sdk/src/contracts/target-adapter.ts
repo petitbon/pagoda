@@ -4,6 +4,10 @@ import type {
   PagodaTargetTurn
 } from '@petitbon/pagoda-core';
 import type { TargetHealth } from './health.js';
+import type {
+  PagodaCallerAgentProvider,
+  PagodaCallerAgentProviderFactoryInput
+} from './caller-agent.js';
 import type { PagodaRunPlan, PreparedRun, TargetRunResult } from './run-plan.js';
 
 export interface PagodaTargetAdapter {
@@ -20,6 +24,9 @@ export type PagodaAdapterOperationOptions = {
 };
 
 export interface PagodaInteractiveTargetAdapter extends PagodaTargetAdapter {
+  createCallerAgentProvider?(
+    input: PagodaCallerAgentProviderFactoryInput
+  ): PagodaCallerAgentProvider | Promise<PagodaCallerAgentProvider>;
   startInteractive(run: PagodaRunPlan, options?: PagodaAdapterOperationOptions): Promise<PreparedRun>;
   /**
    * Returns target turns observed since startup.

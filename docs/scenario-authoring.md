@@ -91,7 +91,7 @@ caller turns.
       "triggers": [
         "answer-question",
         "ask-clarification",
-        "correct-wrong-staff",
+        "correct-conflicting-fact",
         "accept-valid-option",
         "verify-confirmation"
       ],
@@ -120,27 +120,29 @@ acceptable proposal. For proposal-style scenarios that do not include
 `end-when-complete`, that approval completes the caller session. Booking,
 front-desk, and other side-effect workflows should include `end-when-complete`;
 in those scenarios approval is not terminal, and Pagoda keeps observing until a
-strong completion cue matches declared domain facts such as `service`, `staff`,
-`date`, or `time`. If a target confirms completion immediately after an accepted
-option, Pagoda can end the caller session in that same runner loop. Responses to
-answers, corrections, rejections, or verification requests do not use that
-immediate post-send completion shortcut; a later observed target turn must drive
-the next decision. Generic metadata such as the requested outcome or channel
-should stay in the goal summary or knowledge, not in `goal.facts`. Completion
-does not fire for generic language, consent/setup questions, or negated
-confirmations such as `we don't have you booked`, `no appointments are booked`,
-or `nothing is confirmed`. It does tolerate common phone transcript endings such
-as `anything else` after the confirmed facts, and courtesy prefixes such as
-`No problem` are not treated as negation. Those turns are verified, clarified,
-answered, or ignored according to the intervention policy. `maxDurationMs`
+strong completion cue matches the scenario's declared facts or an explicit
+`termination.stopOn` phrase. If a target confirms completion immediately after
+an accepted option, Pagoda can end the caller session in that same runner loop.
+Responses to answers, corrections, rejections, or verification requests do not
+use that immediate post-send completion shortcut; a later observed target turn
+must drive the next decision. Generic metadata such as the requested outcome or
+channel should stay in the goal summary or knowledge, not in `goal.facts`.
+Completion does not fire for generic language, consent/setup questions, or
+negated confirmations. Courtesy phrases such as `No problem` are not treated as
+negation. Those turns are verified, clarified, answered, or ignored according
+to the intervention policy. `correct-conflicting-fact` applies when the target
+explicitly assigns a value that conflicts with a declared goal fact; target
+packs that need domain-specific interpretation should supply a caller provider
+from their interactive adapter. `maxDurationMs`
 covers interactive startup, target observation, caller decisions, caller turns,
 and interactive finish. Interactive adapters receive an optional abort signal
 for those operations and should stop pending channel work when the signal is
 aborted.
 
-`termination.stopOn` is reserved for future terminal-state semantics. Existing
-scenarios that contain it still validate, but new v1 scenarios should use
-`maxTurns` and `maxDurationMs`.
+`termination.stopOn` lists explicit target phrases that prove the caller goal
+is terminal. Matching is case-insensitive and token based, and a nearby
+negation prevents termination. Keep the phrases specific enough that an
+unrelated status message cannot end the session.
 
 In a standalone observed repo, prefer one bundle per scenario:
 

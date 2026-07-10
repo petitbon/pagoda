@@ -5,6 +5,51 @@ The active project now contains only the scenario, evidence, contract,
 observation, oracle, adapter, CLI, and artifact surfaces required to run
 validations.
 
+## 0.3.0 Strict Pre-1.0 Migration
+
+Pagoda uses strict compatibility before 1.0: a minor release may intentionally
+change TypeScript contracts and serialized proof formats without a compatibility
+shim. Upgrade the CLI and all four `@petitbon/pagoda-*` packages together. Their
+published dependencies remain pinned to the same fixed release version.
+
+Version 0.3.0 makes these breaking changes:
+
+- `pagoda run` now validates scenarios and evidence maps and refuses missing,
+  stale, version-mismatched, or unexpected generated outcome contracts before
+  loading an adapter. `pagoda compile` is the repair operation and removes
+  orphaned generated contracts.
+- Canonical observations require `observedOrdering`. Adapters should report the
+  ordering fields they actually established, such as `eventTime`; an empty
+  array is an explicit absence of ordering proof. Missing contract ordering is
+  `OBSERVABILITY_FAILED` and appears in `missingOrdering` on oracle results.
+- The domain-specific `correct-wrong-service`, `correct-wrong-staff`,
+  `correct-wrong-date`, and `correct-wrong-time` agentic triggers are removed.
+  Replace any of them with `correct-conflicting-fact`.
+- Interactive target packs can implement `createCallerAgentProvider` to own
+  target-specific caller policy. The shared deterministic provider is now
+  deliberately target-neutral.
+- Artifact readers verify the canonical file map, regular-file containment, and
+  every declared SHA-256 hash before parsing proof payloads. Artifacts missing
+  the new observation or oracle fields are rejected.
+- Adapter lifecycle failures, including thrown startup/execution errors and
+  cleanup errors, are written as diagnostic artifacts. `run.json.status` is the
+  aggregate run status, `oracleStatus` remains the deterministic oracle result,
+  and `adapterFailures` preserves every recorded lifecycle failure.
+
+For an existing target pack:
+
+1. Replace retired caller triggers with `correct-conflicting-fact`.
+2. Add `observedOrdering` to every live, replay, and test adapter observation.
+3. Run `pagoda update --root .pagoda` or run `pagoda compile --root .pagoda`
+   followed by `pagoda validate --root .pagoda`.
+4. Run the target's smoke scenarios and create new 0.3.0 proof artifacts.
+
+There is no automatic in-place conversion for 0.2.x run artifacts. Keep the
+matching 0.2.x CLI available if those historical bundles must be replayed, or
+retain them as immutable archival evidence. `pagoda report` in 0.3.0 can repair
+only `report.md`; every other source file and hash must already pass 0.3.0
+integrity validation.
+
 ## Current State
 
 - External product integrations live under `.pagoda/` inside the observed repo.

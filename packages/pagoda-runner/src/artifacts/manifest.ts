@@ -1,8 +1,9 @@
 import type { PagodaCallerSession, PagodaEvidenceScenarioStatus } from '@petitbon/pagoda-core';
 
 export type PagodaAdapterFailureDiagnostic = {
-  phase: 'healthCheck' | 'prepare' | 'startInteractive' | 'observeTarget' | 'sendCallerTurn' | 'finishInteractive' | 'execute' | 'collectObservations';
+  phase: 'loadAdapter' | 'healthCheck' | 'prepare' | 'callerProvider' | 'startInteractive' | 'observeTarget' | 'sendCallerTurn' | 'finishInteractive' | 'execute' | 'collectObservations' | 'cleanup';
   category: 'configuration' | 'dependency' | 'timeout' | 'setup' | 'observability' | 'unknown';
+  status: 'SETUP_FAILED' | 'OBSERVABILITY_FAILED';
   dependency?: string;
   message: string;
 };
@@ -23,6 +24,7 @@ export type PagodaRunArtifactManifest = {
     stopReason: PagodaCallerSession['stopReason'];
   };
   adapterFailure?: PagodaAdapterFailureDiagnostic;
+  adapterFailures?: readonly PagodaAdapterFailureDiagnostic[];
   startedAt: string;
   completedAt: string;
   files: Record<string, string>;

@@ -45,18 +45,38 @@ Each run artifact contains:
 - `logs/stdout.log` and `logs/stderr.log`: adapter execution logs.
 
 `run.json` uses `status` for the final run status. For non-agentic runs this is
-the same as `oracleStatus`. For agentic runs, `status` is `FAIL` when the oracle
-passes but the caller session stops before `completed`; `oracleStatus` preserves
-the deterministic oracle decision used by replay, and `agentic.stopReason`
-records why the caller session ended.
+normally the same as `oracleStatus`. For agentic runs, `status` is `FAIL` when
+the oracle passes but the caller session stops before `completed`;
+`oracleStatus` preserves the deterministic oracle decision used by replay, and
+`agentic.stopReason` records why the caller session ended. Lifecycle diagnostics
+take precedence in the aggregate status: any setup-class failure produces
+`SETUP_FAILED`, otherwise an observability-class failure produces
+`OBSERVABILITY_FAILED`. `adapterFailures` records all such failures, while
+`adapterFailure` retains the first diagnostic for consumers that only need one.
 
 ## Canonical Observation
 
 Canonical observations contain accepted evidence, rejected evidence, setup
-evidence, observed trace sources, correlation fields, and forbidden side effects.
-Adapters may collect evidence from APIs, logs, traces, events, tool calls, or
-state changes, but they must normalize it into this structure before oracle
-evaluation.
+evidence, observed trace sources, correlation fields, observed ordering fields,
+and forbidden side effects. Adapters may collect evidence from APIs, logs,
+traces, events, tool calls, or state changes, but they must normalize it into
+this structure before oracle evaluation. An ordering requirement is proven only
+when its name appears in `observedOrdering`.
+
+## Integrity Boundary
+
+Artifact reads are fail-closed. Pagoda first requires `run.json.files` to use
+the canonical filenames, then rejects paths outside the artifact directory,
+symbolic links, non-regular files, missing or unexpected hash entries, malformed
+SHA-256 values, and byte/hash mismatches. Proof JSON is parsed only after those
+checks pass. `hashes.json` contains hashes for every declared artifact file
+except itself. These hashes detect internal inconsistency; they are not a
+signature or an assertion of who produced the bundle.
+
+`pagoda report` is the one controlled repair path: it may ignore the existing
+`report.md` bytes, but it still verifies every proof source and its hash before
+regenerating the report and atomically updating the report hash. It cannot be
+used to bless a modified contract, observation, oracle result, manifest, or log.
 
 ## Replay
 

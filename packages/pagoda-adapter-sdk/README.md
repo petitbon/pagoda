@@ -35,7 +35,8 @@ yarn workspace @petitbon/pagoda-adapter-sdk test
 - target health types;
 - run plan and target run result types;
 - `PagodaTargetAdapter` lifecycle contract;
-- optional `PagodaInteractiveTargetAdapter` contract for agentic caller runs.
+- optional `PagodaInteractiveTargetAdapter` contract for agentic caller runs;
+- optional target-owned `PagodaCallerAgentProvider` factory and decision types.
 
 Adapters translate ordinary platform APIs, logs, traces, events, and facts into
 canonical Pagoda evidence observations. Target platforms remain Pagoda-agnostic.
@@ -53,6 +54,16 @@ Pagoda can release a late-created interactive session after a timeout.
 turns for efficiency. Pagoda also tolerates full transcript snapshots by deduping
 target turns by stable `PagodaTargetTurn.id`; adapters must emit a new id if the
 target produces materially revised text.
+
+Interactive adapters may implement `createCallerAgentProvider({ run,
+interaction })` when caller decisions require target vocabulary or policy. If
+the hook is absent, the runner uses its target-neutral deterministic provider.
+
+Canonical observations in 0.3.0 include required `observedOrdering`. Report
+only ordering guarantees the collector established; use an empty array when it
+cannot prove one. Pagoda awaits collection before cleanup. A thrown lifecycle
+or cleanup error is preserved in a diagnostic run artifact rather than escaping
+without evidence of the attempted run.
 
 ## Standalone Adapters
 

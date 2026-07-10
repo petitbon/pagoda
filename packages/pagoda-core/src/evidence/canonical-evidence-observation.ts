@@ -7,6 +7,7 @@ export type CanonicalEvidenceObservationSet = {
   repairCodes: readonly string[]
   observedTraceSources: readonly PagodaTraceSource[]
   observedCorrelation: readonly string[]
+  observedOrdering: readonly string[]
   forbiddenToolNames: readonly string[]
   forbiddenEvents: readonly string[]
   forbiddenClaims: readonly string[]
@@ -21,6 +22,7 @@ type MutableCanonicalEvidenceObservation = {
   repairCodes: string[]
   observedTraceSources: PagodaTraceSource[]
   observedCorrelation: string[]
+  observedOrdering: string[]
   forbiddenToolNames: string[]
   forbiddenEvents: string[]
   forbiddenClaims: string[]
@@ -55,6 +57,7 @@ export const canonicalEvidenceObservation = (
   repairCodes: uniqueStrings(input.repairCodes ?? []),
   observedTraceSources: uniqueTraceSources(input.observedTraceSources ?? []),
   observedCorrelation: uniqueStrings(input.observedCorrelation ?? []),
+  observedOrdering: uniqueStrings(input.observedOrdering ?? []),
   forbiddenToolNames: uniqueStrings(input.forbiddenToolNames ?? []),
   forbiddenEvents: uniqueStrings(input.forbiddenEvents ?? []),
   forbiddenClaims: uniqueStrings(input.forbiddenClaims ?? []),
@@ -71,6 +74,7 @@ export const mutableCanonicalEvidenceObservation = (
   repairCodes: [...(input.repairCodes ?? [])],
   observedTraceSources: [...(input.observedTraceSources ?? [])],
   observedCorrelation: [...(input.observedCorrelation ?? [])],
+  observedOrdering: [...(input.observedOrdering ?? [])],
   forbiddenToolNames: [...(input.forbiddenToolNames ?? [])],
   forbiddenEvents: [...(input.forbiddenEvents ?? [])],
   forbiddenClaims: [...(input.forbiddenClaims ?? [])],

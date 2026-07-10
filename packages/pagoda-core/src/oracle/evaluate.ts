@@ -25,6 +25,7 @@ export type PagodaOracleEvaluationResult = {
   classificationReasons: readonly string[]
   missingTraceSources: readonly PagodaTraceSource[]
   missingCorrelation: readonly string[]
+  missingOrdering: readonly string[]
 }
 
 type PagodaEvidenceCase = {
@@ -69,12 +70,14 @@ const statusFromEvidence = (input: {
   classificationReasons: string[]
   missingTraceSources?: readonly PagodaTraceSource[]
   missingCorrelation?: readonly string[]
+  missingOrdering?: readonly string[]
 }): PagodaOracleEvaluationResult => ({
   status: input.status,
   clauses: input.clauses,
   classificationReasons: input.classificationReasons,
   missingTraceSources: [...(input.missingTraceSources ?? [])],
   missingCorrelation: [...(input.missingCorrelation ?? [])],
+  missingOrdering: [...(input.missingOrdering ?? [])],
 })
 
 export const evaluatePagodaOutcomeContract = (input: {
@@ -145,17 +148,22 @@ export const evaluatePagodaOutcomeContract = (input: {
   const missingCorrelation = contract.trace.correlation.filter(
     (field) => !observations.observedCorrelation.includes(field)
   )
-  if (missingTraceSources.length > 0 || missingCorrelation.length > 0) {
+  const missingOrdering = contract.trace.ordering.filter(
+    (field) => !observations.observedOrdering.includes(field)
+  )
+  if (missingTraceSources.length > 0 || missingCorrelation.length > 0 || missingOrdering.length > 0) {
     clauses.push(
       ...missingTraceSources.map((source) => clauseMissing(`trace.${source}`)),
-      ...missingCorrelation.map((field) => clauseMissing(`correlation.${field}`))
+      ...missingCorrelation.map((field) => clauseMissing(`correlation.${field}`)),
+      ...missingOrdering.map((field) => clauseMissing(`ordering.${field}`))
     )
     return statusFromEvidence({
       status: "OBSERVABILITY_FAILED",
       clauses,
-      classificationReasons: ["Required trace evidence or correlation is missing."],
+      classificationReasons: ["Required trace evidence, correlation, or ordering is missing."],
       missingTraceSources,
       missingCorrelation,
+      missingOrdering,
     })
   }
 

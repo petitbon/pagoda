@@ -43,6 +43,10 @@ yarn workspace @petitbon/pagoda-core test
 adapters, and replay tools consume this package instead of owning Pagoda
 semantics locally.
 
+In 0.3.0, trace contracts enforce required sources, correlation, and ordering.
+Canonical observations expose `observedOrdering`, and oracle results expose
+`missingOrdering`; absent required ordering is `OBSERVABILITY_FAILED`.
+
 ## Boundary
 
 This package has no knowledge of specific agentic platforms, observed

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
@@ -7,6 +7,7 @@ import {
   createPagodaRunPlan,
   DeterministicCallerAgentProvider,
   readRunArtifactBundle,
+  regenerateRunArtifactReport,
   runPagodaAgenticCallerSession,
   startAndRunPagodaAgenticCallerSession,
   writeRunArtifactBundle
@@ -47,21 +48,20 @@ const agenticInteraction = (input: Partial<PagodaMaterializedAgenticInteraction>
     triggers: [
       'answer-question',
       'ask-clarification',
-      'correct-wrong-service',
-      'correct-wrong-staff',
-      'correct-wrong-date',
-      'correct-wrong-time',
+      'correct-conflicting-fact',
       'reject-out-of-policy',
       'accept-valid-option',
       'verify-confirmation',
       'end-when-complete'
     ]
   },
+  ...input,
   termination: {
     maxTurns: 4,
-    maxDurationMs: 1000
-  },
-  ...input
+    maxDurationMs: 1000,
+    stopOn: ['appointment is booked', 'appointment is confirmed'],
+    ...input.termination
+  }
 });
 
 const preparedRun = { runId: 'run-1', targetId: 'demo-agent' } satisfies PreparedRun;
@@ -98,6 +98,7 @@ const interactiveAdapter = (input: {
         repairCodes: [],
         observedTraceSources: [],
         observedCorrelation: [],
+        observedOrdering: [],
         forbiddenToolNames: [],
         forbiddenEvents: [],
         forbiddenClaims: [],
@@ -120,6 +121,48 @@ const interactiveAdapter = (input: {
     }
   };
   return adapter;
+};
+
+const writeIntegrityTestArtifact = async (directory: string): Promise<void> => {
+  const plan = createPagodaRunPlan({
+    targetId: 'demo-agent',
+    projectRoot: '/repo',
+    targetRoot: '/repo/targets/demo-agent',
+    artifactDirectory: directory,
+    scenario: { id: 'PGD-INTEGRITY', title: 'Integrity' } as never,
+    evidenceMap: { id: 'PGD-INTEGRITY.map', scenarioId: 'PGD-INTEGRITY' } as never,
+    contract: { id: 'PGD-INTEGRITY.contract', scenarioId: 'PGD-INTEGRITY' } as never,
+    channel: 'browser-chat'
+  });
+  await writeRunArtifactBundle({
+    directory,
+    plan,
+    targetManifest: { id: 'demo-agent' },
+    canonicalObservation: {
+      acceptedEvidenceCodes: [],
+      rejectedEvidenceCodes: [],
+      repairCodes: [],
+      observedTraceSources: [],
+      observedCorrelation: [],
+      observedOrdering: [],
+      forbiddenToolNames: [],
+      forbiddenEvents: [],
+      forbiddenClaims: [],
+      setupEvidenceCodes: [],
+      evidenceRefsByCode: {},
+      collectorStatus: 'SETUP_FAILED'
+    },
+    oracleResult: {
+      status: 'SETUP_FAILED',
+      clauses: [],
+      classificationReasons: ['integrity fixture'],
+      missingTraceSources: [],
+      missingCorrelation: [],
+      missingOrdering: []
+    },
+    startedAt: '2026-06-30T21:27:22.803Z',
+    completedAt: '2026-06-30T21:27:23.803Z'
+  });
 };
 
 describe('@petitbon/pagoda-runner', () => {
@@ -152,6 +195,7 @@ describe('@petitbon/pagoda-runner', () => {
         repairCodes: [],
         observedTraceSources: [],
         observedCorrelation: [],
+        observedOrdering: [],
         forbiddenToolNames: [],
         forbiddenEvents: [],
         forbiddenClaims: [],
@@ -164,7 +208,8 @@ describe('@petitbon/pagoda-runner', () => {
         clauses: [],
         classificationReasons: ['test'],
         missingTraceSources: [],
-        missingCorrelation: []
+        missingCorrelation: [],
+        missingOrdering: []
       } satisfies PagodaOracleEvaluationResult;
       const manifest = await writeRunArtifactBundle({
         directory,
@@ -179,6 +224,7 @@ describe('@petitbon/pagoda-runner', () => {
         adapterFailure: {
           phase: 'execute',
           category: 'configuration',
+          status: 'SETUP_FAILED',
           dependency: 'browser-chat',
           message: 'missing env'
         }
@@ -191,13 +237,94 @@ describe('@petitbon/pagoda-runner', () => {
       expect(manifest.adapterFailure).toEqual({
         phase: 'execute',
         category: 'configuration',
+        status: 'SETUP_FAILED',
         dependency: 'browser-chat',
         message: 'missing env'
       });
-      expect(report).toContain('- Adapter Failure: execute category=configuration dependency=browser-chat - missing env');
+      expect(report).toContain('- Adapter Failure: execute status=SETUP_FAILED category=configuration dependency=browser-chat - missing env');
       expect(bundle.manifest.runId).toBe(plan.runId);
       expect(bundle.oracleResult.status).toBe('SETUP_FAILED');
       expect(bundle.canonicalObservation.collectorStatus).toBe('SETUP_FAILED');
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects artifact payloads and hash manifests that fail integrity checks', async () => {
+    const payloadDirectory = await mkdtemp(join(tmpdir(), 'pagoda-runner-tamper-'));
+    const hashesDirectory = await mkdtemp(join(tmpdir(), 'pagoda-runner-hashes-'));
+    try {
+      await writeIntegrityTestArtifact(payloadDirectory);
+      await writeFile(join(payloadDirectory, 'scenario.json'), '{"tampered":true}\n', 'utf8');
+      await expect(readRunArtifactBundle(payloadDirectory)).rejects.toThrow(
+        'hash mismatch for scenario.json'
+      );
+
+      await writeIntegrityTestArtifact(hashesDirectory);
+      const hashesPath = join(hashesDirectory, 'hashes.json');
+      const hashes = JSON.parse(await readFile(hashesPath, 'utf8')) as Record<string, string>;
+      hashes['../outside.json'] = hashes['scenario.json'];
+      await writeFile(hashesPath, `${JSON.stringify(hashes, null, 2)}\n`, 'utf8');
+      await expect(readRunArtifactBundle(hashesDirectory)).rejects.toThrow(
+        'unexpected hash entry ../outside.json'
+      );
+      delete hashes['../outside.json'];
+      delete hashes['scenario.json'];
+      await writeFile(hashesPath, `${JSON.stringify(hashes, null, 2)}\n`, 'utf8');
+      await expect(readRunArtifactBundle(hashesDirectory)).rejects.toThrow(
+        'missing hash entry scenario.json'
+      );
+    } finally {
+      await rm(payloadDirectory, { recursive: true, force: true });
+      await rm(hashesDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects artifact path remapping and symbolic-link payloads', async () => {
+    const pathDirectory = await mkdtemp(join(tmpdir(), 'pagoda-runner-path-'));
+    const linkDirectory = await mkdtemp(join(tmpdir(), 'pagoda-runner-link-'));
+    const outsideDirectory = await mkdtemp(join(tmpdir(), 'pagoda-runner-outside-'));
+    try {
+      await writeIntegrityTestArtifact(pathDirectory);
+      const runPath = join(pathDirectory, 'run.json');
+      const manifest = JSON.parse(await readFile(runPath, 'utf8')) as {
+        files: Record<string, string>;
+      };
+      manifest.files.scenario = '../scenario.json';
+      await writeFile(runPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+      await expect(readRunArtifactBundle(pathDirectory)).rejects.toThrow(
+        'files.scenario must be scenario.json'
+      );
+
+      await writeIntegrityTestArtifact(linkDirectory);
+      const outsidePath = join(outsideDirectory, 'canonical-observation.json');
+      await writeFile(outsidePath, '{}\n', 'utf8');
+      const observationPath = join(linkDirectory, 'canonical-observation.json');
+      await rm(observationPath);
+      await symlink(outsidePath, observationPath);
+      await expect(readRunArtifactBundle(linkDirectory)).rejects.toThrow(
+        'canonical-observation.json must be a regular file'
+      );
+    } finally {
+      await rm(pathDirectory, { recursive: true, force: true });
+      await rm(linkDirectory, { recursive: true, force: true });
+      await rm(outsideDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it('repairs only a stale report and refreshes its integrity hash', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'pagoda-runner-report-'));
+    try {
+      await writeIntegrityTestArtifact(directory);
+      await writeFile(join(directory, 'report.md'), '# stale report\n', 'utf8');
+      await expect(readRunArtifactBundle(directory)).rejects.toThrow(
+        'hash mismatch for report.md'
+      );
+      await regenerateRunArtifactReport(directory);
+      await expect(readRunArtifactBundle(directory)).resolves.toMatchObject({
+        manifest: { scenarioId: 'PGD-INTEGRITY' }
+      });
+      expect(await readFile(join(directory, 'report.md'), 'utf8')).toContain('# Pagoda Run Report');
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -235,6 +362,7 @@ describe('@petitbon/pagoda-runner', () => {
         repairCodes: [],
         observedTraceSources: [],
         observedCorrelation: [],
+        observedOrdering: [],
         forbiddenToolNames: [],
         forbiddenEvents: [],
         forbiddenClaims: [],
@@ -247,7 +375,8 @@ describe('@petitbon/pagoda-runner', () => {
         clauses: [],
         classificationReasons: ['test'],
         missingTraceSources: [],
-        missingCorrelation: []
+        missingCorrelation: [],
+        missingOrdering: []
       } satisfies PagodaOracleEvaluationResult;
       const manifest = await writeRunArtifactBundle({
         directory,
@@ -322,6 +451,7 @@ describe('@petitbon/pagoda-runner', () => {
         repairCodes: [],
         observedTraceSources: [],
         observedCorrelation: [],
+        observedOrdering: [],
         forbiddenToolNames: [],
         forbiddenEvents: [],
         forbiddenClaims: [],
@@ -334,7 +464,8 @@ describe('@petitbon/pagoda-runner', () => {
         clauses: [],
         classificationReasons: ['test'],
         missingTraceSources: [],
-        missingCorrelation: []
+        missingCorrelation: [],
+        missingOrdering: []
       } satisfies PagodaOracleEvaluationResult;
       const manifest = await writeRunArtifactBundle({
         directory,
@@ -392,6 +523,7 @@ describe('@petitbon/pagoda-runner', () => {
         repairCodes: [],
         observedTraceSources: [],
         observedCorrelation: [],
+        observedOrdering: [],
         forbiddenToolNames: [],
         forbiddenEvents: [],
         forbiddenClaims: [],
@@ -404,7 +536,8 @@ describe('@petitbon/pagoda-runner', () => {
         clauses: [],
         classificationReasons: [],
         missingTraceSources: [],
-        missingCorrelation: []
+        missingCorrelation: [],
+        missingOrdering: []
       } satisfies PagodaOracleEvaluationResult;
       const manifest = await writeRunArtifactBundle({
         directory,
@@ -442,7 +575,7 @@ describe('@petitbon/pagoda-runner', () => {
     })).resolves.toMatchObject({ action: 'ask_clarification' });
     await expect(provider.decide({
       interaction,
-      observedTurns: [{ id: 'target-1', actor: 'assistant', text: 'I have Alex available tomorrow at 2 PM.' }],
+      observedTurns: [{ id: 'target-1', actor: 'assistant', text: 'Staff is Alex. I have an option available tomorrow at 2 PM.' }],
       previousDecisions: []
     })).resolves.toMatchObject({ action: 'correct' });
     await expect(provider.decide({
@@ -456,7 +589,7 @@ describe('@petitbon/pagoda-runner', () => {
       }),
       observedTurns: [{ id: 'target-1', actor: 'assistant', text: 'I have a premium package available.' }],
       previousDecisions: []
-    })).resolves.toMatchObject({ action: 'reject' });
+    })).resolves.toMatchObject({ action: 'ask_clarification' });
     await expect(provider.decide({
       interaction,
       observedTurns: [{ id: 'target-1', actor: 'assistant', text: 'I have a barber haircut with Norman tomorrow at 2 PM available.' }],
@@ -464,7 +597,7 @@ describe('@petitbon/pagoda-runner', () => {
     })).resolves.toMatchObject({ action: 'accept' });
     await expect(provider.decide({
       interaction,
-      observedTurns: [{ id: 'target-1', actor: 'assistant', text: 'Your appointment is booked.' }],
+      observedTurns: [{ id: 'target-1', actor: 'assistant', text: 'The process is completed.' }],
       previousDecisions: []
     })).resolves.toMatchObject({ action: 'verify' });
     await expect(provider.decide({
@@ -479,7 +612,7 @@ describe('@petitbon/pagoda-runner', () => {
     const interaction = agenticInteraction();
     await expect(provider.decide({
       interaction,
-      observedTurns: [{ id: 'target-1', actor: 'assistant', text: 'Your appointment is booked with Alex tomorrow at 12 PM.' }],
+      observedTurns: [{ id: 'target-1', actor: 'assistant', text: 'Staff is Alex. Your appointment is booked tomorrow at 12 PM.' }],
       previousDecisions: []
     })).resolves.toMatchObject({ action: 'correct' });
     await expect(provider.decide({
@@ -521,14 +654,14 @@ describe('@petitbon/pagoda-runner', () => {
       interaction: agenticInteraction({
         interventionPolicy: { triggers: ['verify-confirmation'] }
       }),
-      observedTurns: [{ id: 'target-1', actor: 'assistant', text: 'Your appointment is confirmed for a barber haircut with Norman tomorrow at 2 PM.' }],
+      observedTurns: [{ id: 'target-1', actor: 'assistant', text: 'The process is completed.' }],
       previousDecisions: []
     })).resolves.toMatchObject({ action: 'verify' });
     await expect(provider.decide({
       interaction,
       observedTurns: [{ id: 'target-1', actor: 'assistant', text: 'Your appointment is booked.' }],
       previousDecisions: [{ action: 'verify', text: 'Can you confirm the details?' }]
-    })).resolves.toMatchObject({ action: 'ask_clarification' });
+    })).resolves.toMatchObject({ action: 'end' });
     await expect(provider.decide({
       interaction: agenticInteraction({
         interventionPolicy: { triggers: ['ask-clarification'] }
@@ -638,12 +771,12 @@ describe('@petitbon/pagoda-runner', () => {
     const provider = new DeterministicCallerAgentProvider();
     await expect(provider.decide({
       interaction: agenticInteraction(),
-      observedTurns: [{ id: 'target-1', actor: 'assistant', text: 'I have a barber haircut with Norman tomorrow at 12 PM available.' }],
+      observedTurns: [{ id: 'target-1', actor: 'assistant', text: 'Time is 12 PM. I have a barber haircut with Norman tomorrow available.' }],
       previousDecisions: []
     })).resolves.toMatchObject({ action: 'correct' });
     await expect(provider.decide({
       interaction: agenticInteraction(),
-      observedTurns: [{ id: 'target-1', actor: 'assistant', text: 'I have a barber haircut with Norman tomorrow at 2:00 p.m. available.' }],
+      observedTurns: [{ id: 'target-1', actor: 'assistant', text: 'I have a barber haircut with Norman tomorrow at 2 PM available.' }],
       previousDecisions: []
     })).resolves.toMatchObject({ action: 'accept' });
     await expect(provider.decide({
@@ -657,7 +790,31 @@ describe('@petitbon/pagoda-runner', () => {
       }),
       observedTurns: [{ id: 'target-1', actor: 'assistant', text: 'I have an unsafe next action available.' }],
       previousDecisions: []
+    })).resolves.toMatchObject({ action: 'ask_clarification' });
+    await expect(provider.decide({
+      interaction: agenticInteraction({
+        goal: {
+          summary: 'Find a safe next step.',
+          facts: {},
+          acceptableAlternatives: ['safe next step'],
+          successCriteria: ['A safe next step is offered.']
+        }
+      }),
+      observedTurns: [{ id: 'target-1', actor: 'assistant', text: 'No safe next step is available.' }],
+      previousDecisions: []
     })).resolves.toMatchObject({ action: 'reject' });
+    await expect(provider.decide({
+      interaction: agenticInteraction({
+        goal: {
+          summary: 'Complete the safe proposal outcome.',
+          facts: { requestedOutcome: 'safe proposal' },
+          acceptableAlternatives: [],
+          successCriteria: ['The safe proposal outcome is complete.']
+        }
+      }),
+      observedTurns: [{ id: 'target-1', actor: 'assistant', text: 'Requested outcome is unsafe execution.' }],
+      previousDecisions: []
+    })).resolves.toMatchObject({ action: 'correct' });
     await expect(provider.decide({
       interaction: agenticInteraction({
         goal: {
@@ -696,7 +853,7 @@ describe('@petitbon/pagoda-runner', () => {
       }),
       observedTurns: [{ id: 'target-1', actor: 'assistant', text: 'I have a safe next step available.' }],
       previousDecisions: []
-    })).resolves.toMatchObject({ action: 'accept' });
+    })).resolves.toMatchObject({ action: 'ask_clarification' });
   });
 
   it('starts user-initiated agentic sessions with the caller goal when no target turn exists', async () => {
@@ -720,6 +877,69 @@ describe('@petitbon/pagoda-runner', () => {
     expect(sent[0]).toBe('Book a barber haircut with Norman tomorrow at 2 PM.');
     expect(result.callerSession.stopReason).toBe('completed');
     expect(result.callerSession.turns.some((turn) => turn.actor === 'caller')).toBe(true);
+  });
+
+  it('uses an adapter-provided caller agent for target-specific decision policy', async () => {
+    let factoryRunId: string | undefined;
+    const adapter = interactiveAdapter({
+      observe: async () => ({
+        turns: [{ id: 'target-option', actor: 'assistant', text: 'The target-specific option is ready.' }]
+      })
+    });
+    adapter.createCallerAgentProvider = async ({ run }) => {
+      factoryRunId = run.runId;
+      return {
+        id: 'target-policy-caller',
+        model: 'target-policy-v1',
+        deterministic: true,
+        async decide() {
+          return {
+            action: 'accept',
+            text: 'Apply the target-specific acceptance rule.',
+            rationale: 'The target pack owns this decision policy.'
+          };
+        }
+      };
+    };
+    const interaction = agenticInteraction({
+      goal: {
+        summary: 'Complete a target-specific workflow.',
+        facts: {},
+        acceptableAlternatives: ['The target-specific option.'],
+        successCriteria: ['The target-specific workflow reaches its accepted state.']
+      },
+      interventionPolicy: { triggers: ['accept-valid-option'] },
+      termination: { maxTurns: 2, maxDurationMs: 1000, stopOn: [] }
+    });
+    const plan = createPagodaRunPlan({
+      targetId: 'demo-agent',
+      projectRoot: '/repo',
+      targetRoot: '/repo/targets/demo-agent',
+      artifactDirectory: '/tmp/provider-hook',
+      scenario: { id: 'PGD-PROVIDER', title: 'Provider' } as never,
+      evidenceMap: { id: 'PGD-PROVIDER.map', scenarioId: 'PGD-PROVIDER' } as never,
+      contract: { id: 'PGD-PROVIDER.contract', scenarioId: 'PGD-PROVIDER' } as never,
+      channel: 'browser-chat',
+      interaction
+    });
+
+    const result = await startAndRunPagodaAgenticCallerSession({
+      adapter,
+      run: plan,
+      interaction,
+      startedAt: new Date().toISOString()
+    });
+
+    expect(factoryRunId).toBe(plan.runId);
+    expect(result.callerSession.provider).toEqual({
+      id: 'target-policy-caller',
+      model: 'target-policy-v1',
+      deterministic: true
+    });
+    expect(result.callerSession.stopReason).toBe('completed');
+    expect(result.callerSession.decisions).toEqual([
+      expect.objectContaining({ action: 'accept' })
+    ]);
   });
 
   it('responds after an initial assistant greeting in agentic sessions', async () => {
@@ -946,7 +1166,7 @@ describe('@petitbon/pagoda-runner', () => {
 
   it('does not use immediate completion after non-accept caller actions', async () => {
     const cases: Array<{
-      expectedAction: 'answer' | 'correct' | 'reject' | 'verify';
+      expectedAction: 'answer' | 'correct' | 'ask_clarification' | 'verify';
       interaction?: PagodaMaterializedAgenticInteraction;
       observedText: string;
       completedText: string;
@@ -958,11 +1178,11 @@ describe('@petitbon/pagoda-runner', () => {
       },
       {
         expectedAction: 'correct',
-        observedText: 'Your appointment is booked for a barber haircut with Norman tomorrow at 12 PM.',
+        observedText: 'Time is 12 PM. Your appointment is pending.',
         completedText: 'Your appointment is booked for a barber haircut with Norman tomorrow at 2 PM.'
       },
       {
-        expectedAction: 'reject',
+        expectedAction: 'ask_clarification',
         interaction: agenticInteraction({
           goal: {
             summary: 'Book the basic plan.',
@@ -976,7 +1196,7 @@ describe('@petitbon/pagoda-runner', () => {
       },
       {
         expectedAction: 'verify',
-        observedText: 'Your appointment is booked.',
+        observedText: 'The process is completed.',
         completedText: 'Your appointment is booked for a barber haircut with Norman tomorrow at 2 PM.'
       }
     ];
@@ -1052,6 +1272,10 @@ describe('@petitbon/pagoda-runner', () => {
     expect(timeout.prepared).toBeUndefined();
     expect(timeout.callerSession.stopReason).toBe('timeout');
     expect(timeout.result.status).toBe('failed');
+    expect(timeout.result.metadata).toMatchObject({
+      agenticFailurePhase: 'startInteractive',
+      adapterFailurePhase: 'startInteractive'
+    });
 
     const adapterFailed = await startAndRunPagodaAgenticCallerSession({
       adapter: interactiveAdapter({
@@ -1070,6 +1294,10 @@ describe('@petitbon/pagoda-runner', () => {
     expect(adapterFailed.prepared).toBeUndefined();
     expect(adapterFailed.callerSession.stopReason).toBe('adapter-failed');
     expect(adapterFailed.result.status).toBe('failed');
+    expect(adapterFailed.result.metadata).toMatchObject({
+      agenticFailurePhase: 'startInteractive',
+      adapterFailurePhase: 'startInteractive'
+    });
   });
 
   it('passes abort signals to interactive adapter operations', async () => {
@@ -1166,6 +1394,10 @@ describe('@petitbon/pagoda-runner', () => {
       startedAt: new Date().toISOString()
     });
     expect(adapterFailed.callerSession.stopReason).toBe('adapter-failed');
+    expect(adapterFailed.result.metadata).toMatchObject({
+      agenticFailurePhase: 'observeTarget',
+      adapterFailurePhase: 'observeTarget'
+    });
 
     const providerFailed = await runPagodaAgenticCallerSession({
       adapter: interactiveAdapter(),
@@ -1181,5 +1413,9 @@ describe('@petitbon/pagoda-runner', () => {
       }
     });
     expect(providerFailed.callerSession.stopReason).toBe('provider-failed');
+    expect(providerFailed.result.metadata).toMatchObject({
+      agenticFailurePhase: 'callerProvider',
+      adapterFailurePhase: 'callerProvider'
+    });
   });
 });

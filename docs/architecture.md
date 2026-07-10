@@ -26,16 +26,20 @@ packs contain platform-specific scenarios, fixtures, adapters, and traces.
 
 1. A project pack provides human-authored scenarios and evidence maps.
 2. `pagoda compile` projects those files into generated outcome contracts.
-3. `pagoda run` loads a target adapter and checks that its manifest can
-   produce the scenario's required evidence codes.
+3. `pagoda run` validates source models and generated-contract freshness, then
+   resolves the target adapter and checks that its manifest can produce the
+   scenario's required evidence codes.
 4. The runner creates a run plan.
 5. The adapter prepares and executes the target scenario. For generated
    interaction this means deterministic user turns; for agentic interaction it
    means a materialized caller plan and, when supported, an interactive caller
    session.
-6. The adapter returns canonical evidence observations.
-7. The core oracle compares observations to the outcome contract.
-8. The runner writes a reproducible artifact bundle.
+6. The adapter returns canonical evidence observations. Pagoda completes raw
+   evidence reads, then awaits cleanup.
+7. The core oracle compares observations to the outcome contract, including
+   trace-source, correlation, and ordering requirements.
+8. The runner writes a reproducible artifact bundle whose canonical paths and
+   hashes are verified on replay.
 
 ## Root Modes
 
@@ -95,6 +99,8 @@ This layout is used by the bundled demo target and by framework contributors.
   generated-only unless they opt into `agentic`.
 - Agentic caller turns are execution input and artifact context; trusted
   observations still come from adapters and the oracle remains deterministic.
+- Target-specific caller policy belongs in an adapter-provided caller provider;
+  the shared fallback is target-neutral.
 - The oracle decides status; it does not call target systems.
 - Outcome contracts are generated; scenarios and evidence maps are the source
   of truth.
