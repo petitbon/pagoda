@@ -200,6 +200,9 @@ jobs:
       - name: Build release packages
         run: yarn build
 
+      - name: Compile release contracts
+        run: yarn compile
+
       - name: Validate release packages
         run: yarn validate
 
