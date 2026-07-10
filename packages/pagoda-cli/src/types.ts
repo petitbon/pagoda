@@ -1,4 +1,4 @@
-import type { PagodaCallerSession, PagodaEvidenceMap, PagodaEvidenceScenarioStatus, PagodaOutcomeContract, PagodaScenario } from '@petitbon/pagoda-core';
+import type { CanonicalCollectorDiagnostic, PagodaCallerSession, PagodaEvidenceMap, PagodaEvidenceScenarioStatus, PagodaOutcomeContract, PagodaScenario } from '@petitbon/pagoda-core';
 import type { PagodaAdapterManifest, PagodaTargetManifest } from '@petitbon/pagoda-adapter-sdk';
 import type { evaluatePagodaOutcomeContract } from '@petitbon/pagoda-core';
 import type { PagodaAdapterFailureDiagnostic } from '@petitbon/pagoda-runner';
@@ -59,6 +59,7 @@ export type PagodaRunCliResult = {
   };
   adapterFailure?: PagodaAdapterFailureDiagnostic;
   adapterFailures?: readonly PagodaAdapterFailureDiagnostic[];
+  collectorDiagnostics?: readonly CanonicalCollectorDiagnostic[];
   oracle: ReturnType<typeof evaluatePagodaOutcomeContract>;
 };
 

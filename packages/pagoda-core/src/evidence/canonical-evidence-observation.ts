@@ -14,6 +14,16 @@ export type CanonicalEvidenceObservationSet = {
   setupEvidenceCodes: readonly string[]
   evidenceRefsByCode: Readonly<Record<string, readonly string[]>>
   collectorStatus?: EvidenceScenarioStatus | null
+  collectorDiagnostics: readonly CanonicalCollectorDiagnostic[]
+}
+
+export type CanonicalCollectorDiagnostic = {
+  code: string
+  message: string
+  category?: string
+  dependency?: string
+  phase?: string
+  details?: Readonly<Record<string, unknown>>
 }
 
 type MutableCanonicalEvidenceObservation = {
@@ -29,6 +39,7 @@ type MutableCanonicalEvidenceObservation = {
   setupEvidenceCodes: string[]
   evidenceRefsByCode: Record<string, string[]>
   collectorStatus?: EvidenceScenarioStatus | null
+  collectorDiagnostics: CanonicalCollectorDiagnostic[]
 }
 
 export const uniqueStrings = (values: readonly string[]): string[] => [
@@ -49,6 +60,17 @@ const uniqueRefs = (
   return output
 }
 
+const uniqueCollectorDiagnostics = (
+  diagnostics: readonly CanonicalCollectorDiagnostic[] | undefined
+): CanonicalCollectorDiagnostic[] => {
+  const output = new Map<string, CanonicalCollectorDiagnostic>()
+  for (const diagnostic of diagnostics ?? []) {
+    const key = JSON.stringify(diagnostic)
+    output.set(key, { ...diagnostic })
+  }
+  return [...output.values()]
+}
+
 export const canonicalEvidenceObservation = (
   input: Partial<CanonicalEvidenceObservationSet> = {}
 ): CanonicalEvidenceObservationSet => ({
@@ -64,6 +86,7 @@ export const canonicalEvidenceObservation = (
   setupEvidenceCodes: uniqueStrings(input.setupEvidenceCodes ?? []),
   evidenceRefsByCode: uniqueRefs(input.evidenceRefsByCode),
   collectorStatus: input.collectorStatus ?? null,
+  collectorDiagnostics: uniqueCollectorDiagnostics(input.collectorDiagnostics),
 })
 
 export const mutableCanonicalEvidenceObservation = (
@@ -81,6 +104,7 @@ export const mutableCanonicalEvidenceObservation = (
   setupEvidenceCodes: [...(input.setupEvidenceCodes ?? [])],
   evidenceRefsByCode: uniqueRefs(input.evidenceRefsByCode),
   collectorStatus: input.collectorStatus ?? null,
+  collectorDiagnostics: uniqueCollectorDiagnostics(input.collectorDiagnostics),
 })
 
 export const addCanonicalEvidenceCode = (

@@ -67,12 +67,20 @@ const formatRunDetails = (run: PagodaRunCliResult): string[] => {
       failure.dependency ? `dependency=${failure.dependency}` : null,
       failure.message
     ].filter((part): part is string => part !== null).join('  '));
+  const collectorDiagnostics = (run.collectorDiagnostics ?? []).map((diagnostic) => [
+    `  Collector: ${diagnostic.code}`,
+    diagnostic.category ? `category=${diagnostic.category}` : null,
+    diagnostic.dependency ? `dependency=${diagnostic.dependency}` : null,
+    diagnostic.phase ? `phase=${diagnostic.phase}` : null,
+    diagnostic.message
+  ].filter((part): part is string => part !== null).join('  '));
   if (run.status === 'PASS') return agenticFailure;
   const missingClauses = run.oracle.clauses.filter((clause) => clause.status === 'MISSING');
   const failedClauses = run.oracle.clauses.filter((clause) => clause.status === 'FAILED');
   return [
     ...agenticFailure,
     ...adapterFailure,
+    ...collectorDiagnostics,
     ...run.oracle.classificationReasons.map((reason) => `  Reason: ${reason}`),
     run.interactionCaseId ? `  Interaction case: ${run.interactionCaseId}` : null,
     ...missingClauses.map((clause) => `  MISSING: ${clause.clause}`),

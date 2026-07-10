@@ -211,6 +211,22 @@ const seenPairs = (cases: ReturnType<typeof listPagodaInteractionCases>, left: s
   new Set(cases.map((item) => `${String(item.slots[left])}|${String(item.slots[right])}`));
 
 describe('@petitbon/pagoda-core', () => {
+  it('preserves and deduplicates structured collector diagnostics', () => {
+    const diagnostic = {
+      code: 'TRACE_QUERY_FAILED',
+      message: 'The trace backend did not return an observable row.',
+      category: 'observability',
+      dependency: 'cloud-logging',
+      phase: 'collect'
+    };
+    const observation = canonicalEvidenceObservation({
+      collectorStatus: 'OBSERVABILITY_FAILED',
+      collectorDiagnostics: [diagnostic, diagnostic]
+    });
+
+    expect(observation.collectorDiagnostics).toEqual([diagnostic]);
+  });
+
   it('oracle applies the canonical classification order', () => {
     expect(evaluatePagodaOutcomeContract({
       contract,

@@ -595,6 +595,13 @@ async function runLoadedTargetScenario(input: {
       addFailure(failure, error);
       observations = canonicalEvidenceObservation({
         collectorStatus: 'OBSERVABILITY_FAILED',
+        collectorDiagnostics: [{
+          code: 'OBSERVATION_COLLECTION_FAILED',
+          message: failure.message,
+          category: failure.category,
+          dependency: failure.dependency,
+          phase: failure.phase
+        }],
         evidenceRefsByCode: {
           OBSERVATION_COLLECTION_FAILED: [failure.message]
         }
@@ -692,6 +699,9 @@ async function runLoadedTargetScenario(input: {
     durationMs: Date.now() - startedMs,
     ...(agentic ? { agentic } : {}),
     ...(failures[0] ? { adapterFailure: failures[0], adapterFailures: failures } : {}),
+    ...(observations.collectorDiagnostics.length > 0
+      ? { collectorDiagnostics: observations.collectorDiagnostics }
+      : {}),
     oracle: evaluation
   };
 }
