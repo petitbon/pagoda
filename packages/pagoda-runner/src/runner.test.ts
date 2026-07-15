@@ -1345,7 +1345,7 @@ describe('@petitbon/pagoda-runner', () => {
     expect(signals.every((signal) => signal.aborted === false)).toBe(true);
   });
 
-  it('aborts timed-out startup and cleans up late prepared runs', async () => {
+  it('aborts in-flight startup and cleans up late prepared runs', async () => {
     const run = createPagodaRunPlan({
       targetId: 'demo-agent',
       projectRoot: '/repo',
@@ -1363,7 +1363,7 @@ describe('@petitbon/pagoda-runner', () => {
       start: async (options) => {
         signal = options.signal;
         return new Promise((resolve) => {
-          setTimeout(() => resolve(preparedRun), 20);
+          setTimeout(() => resolve(preparedRun), 200);
         });
       }
     });
@@ -1373,12 +1373,12 @@ describe('@petitbon/pagoda-runner', () => {
     const timeout = await startAndRunPagodaAgenticCallerSession({
       adapter,
       run,
-      interaction: agenticInteraction({ termination: { maxTurns: 3, maxDurationMs: 1 } }),
+      interaction: agenticInteraction({ termination: { maxTurns: 3, maxDurationMs: 100 } }),
       startedAt: new Date().toISOString()
     });
     expect(timeout.callerSession.stopReason).toBe('timeout');
     expect(signal?.aborted).toBe(true);
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    await new Promise((resolve) => setTimeout(resolve, 125));
     expect(cleanupCount).toBe(1);
   });
 
