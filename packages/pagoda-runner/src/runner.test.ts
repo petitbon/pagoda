@@ -221,26 +221,26 @@ describe('@petitbon/pagoda-runner', () => {
         completedAt: '2026-06-30T21:27:23.803Z',
         rawObservations: { status: 'failed' },
         logs: { stderr: 'missing env' },
-        adapterFailure: {
+        adapterFailures: [{
           phase: 'execute',
           category: 'configuration',
           status: 'SETUP_FAILED',
           dependency: 'browser-chat',
           message: 'missing env'
-        }
+        }]
       });
       const bundle = await readRunArtifactBundle(directory);
       const report = await readFile(join(directory, 'report.md'), 'utf8');
       expect(Object.values(manifest.files).sort()).toContain('oracle-result.json');
       expect(manifest.status).toBe('SETUP_FAILED');
       expect(manifest.oracleStatus).toBe('SETUP_FAILED');
-      expect(manifest.adapterFailure).toEqual({
+      expect(manifest.adapterFailures).toEqual([{
         phase: 'execute',
         category: 'configuration',
         status: 'SETUP_FAILED',
         dependency: 'browser-chat',
         message: 'missing env'
-      });
+      }]);
       expect(report).toContain('- Adapter Failure: execute status=SETUP_FAILED category=configuration dependency=browser-chat - missing env');
       expect(bundle.manifest.runId).toBe(plan.runId);
       expect(bundle.oracleResult.status).toBe('SETUP_FAILED');

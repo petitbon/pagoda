@@ -23,7 +23,6 @@ export type PagodaRunArtifactManifest = {
     completed: boolean;
     stopReason: PagodaCallerSession['stopReason'];
   };
-  adapterFailure?: PagodaAdapterFailureDiagnostic;
   adapterFailures?: readonly PagodaAdapterFailureDiagnostic[];
   startedAt: string;
   completedAt: string;

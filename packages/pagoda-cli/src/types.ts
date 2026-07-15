@@ -59,7 +59,6 @@ export type PagodaRunCliResult = {
     completed: boolean;
     stopReason: PagodaCallerSession['stopReason'];
   };
-  adapterFailure?: PagodaAdapterFailureDiagnostic;
   adapterFailures?: readonly PagodaAdapterFailureDiagnostic[];
   collectorDiagnostics?: readonly CanonicalCollectorDiagnostic[];
   oracle: ReturnType<typeof evaluatePagodaOutcomeContract>;

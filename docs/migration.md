@@ -5,6 +5,22 @@ The active project now contains only the scenario, evidence, contract,
 observation, oracle, adapter, CLI, and artifact surfaces required to run
 validations.
 
+## 0.6.0 Canonical Adapter Failure List
+
+Version 0.6.0 removes the singular `adapterFailure` field from CLI run results,
+artifact writer input, and serialized `run.json` manifests. `adapterFailures`
+is now the sole ordered lifecycle-diagnostic contract. Consumers that need the
+first diagnostic may read `adapterFailures[0]`.
+
+This is an intentional breaking pre-1.0 release. Existing proof artifacts keep
+their original schema and matching CLI for reproducibility; current readers do
+not normalize the retired singular field.
+
+The adapter execution-result contract remains singular at
+`metadata.adapterFailure` because one adapter result reports one diagnostic.
+The CLI aggregates those result diagnostics into `adapterFailures`; only the
+aggregate CLI result and artifact contract changed in 0.6.0.
+
 ## 0.5.0 Retired Target Metadata
 
 Version 0.5.0 removes the unused target-manifest fields `observedSystem` and

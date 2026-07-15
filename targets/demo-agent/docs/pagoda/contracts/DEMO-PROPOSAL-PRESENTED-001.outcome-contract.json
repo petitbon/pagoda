@@ -141,6 +141,6 @@
   "generatedFrom": {
     "scenarioHash": "sha256:ef697543a5519a20a147318d2158d3dba69c5aca331843b8943ca370b42ffebd",
     "evidenceMapHash": "sha256:e7660667994943a9b489ad136ec67a7a3253e7b48c2ae7d25f5087f857565d8c",
-    "pagodaCoreVersion": "0.5.0"
+    "pagodaCoreVersion": "0.6.0"
   }
 }

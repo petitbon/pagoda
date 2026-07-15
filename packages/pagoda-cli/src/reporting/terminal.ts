@@ -62,7 +62,7 @@ const formatRunDetails = (run: PagodaRunCliResult): string[] => {
   const agenticFailure = run.agentic?.completed === false
     ? [`  Agentic session did not complete: ${run.agentic.stopReason}`]
     : [];
-  const adapterFailure = (run.adapterFailures ?? (run.adapterFailure ? [run.adapterFailure] : []))
+  const adapterFailure = (run.adapterFailures ?? [])
     .map((failure) => [
       `  Adapter: ${failure.phase}`,
       `status=${failure.status}`,

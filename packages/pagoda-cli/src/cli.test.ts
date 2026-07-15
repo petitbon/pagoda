@@ -500,19 +500,19 @@ export default adapter;
       });
       const run = JSON.parse(jsonLogs.join('\n')) as {
         artifactDirectory: string;
-        adapterFailure: { phase: string; category: string; dependency: string; message: string };
+        adapterFailures: Array<{ phase: string; category: string; dependency: string; message: string }>;
         oracle: { status: string };
       };
       expect(run.oracle.status).toBe('SETUP_FAILED');
-      expect(run.adapterFailure).toMatchObject({
+      expect(run.adapterFailures).toEqual([expect.objectContaining({
         phase: 'execute',
         category: 'dependency',
         dependency: 'session-ledger',
         message: 'Session Ledger request failed: 500 Internal Server Error'
-      });
+      })]);
 
       const manifest = JSON.parse(await readFile(join(run.artifactDirectory, 'run.json'), 'utf8'));
-      expect(manifest.adapterFailure).toMatchObject(run.adapterFailure);
+      expect(manifest.adapterFailures).toEqual(run.adapterFailures);
       const report = await readFile(join(run.artifactDirectory, 'report.md'), 'utf8');
       expect(report).toContain('- Adapter Failure: execute status=SETUP_FAILED category=dependency dependency=session-ledger - Session Ledger request failed: 500 Internal Server Error');
 
@@ -680,15 +680,15 @@ export default adapter;
       });
       const run = JSON.parse(logs.join('\n')) as {
         artifactDirectory: string;
-        adapterFailure: { phase: string; status: string; message: string };
+        adapterFailures: Array<{ phase: string; status: string; message: string }>;
       };
-      expect(run.adapterFailure).toMatchObject({
+      expect(run.adapterFailures).toEqual([expect.objectContaining({
         phase: 'execute',
         status: 'SETUP_FAILED',
         message: 'execute exploded'
-      });
+      })]);
       const manifest = JSON.parse(await readFile(join(run.artifactDirectory, 'run.json'), 'utf8'));
-      expect(manifest.adapterFailure).toMatchObject(run.adapterFailure);
+      expect(manifest.adapterFailures).toEqual(run.adapterFailures);
       expect(await readFile(join(run.artifactDirectory, 'logs/stderr.log'), 'utf8')).toContain('execute exploded');
     });
   });
@@ -1388,15 +1388,15 @@ export default adapter;
         const run = JSON.parse(runLogs.join('\n')) as {
           artifactDirectory: string;
           agentic: { completed: boolean; stopReason: string };
-          adapterFailure: { phase: string; status: string };
+          adapterFailures: Array<{ phase: string; status: string }>;
           oracle: { status: string };
         };
         expect(run.oracle.status).toBe('SETUP_FAILED');
         expect(run.agentic).toEqual({ completed: false, stopReason: mode });
-        expect(run.adapterFailure).toMatchObject({
+        expect(run.adapterFailures).toEqual([expect.objectContaining({
           phase: 'startInteractive',
           status: 'SETUP_FAILED'
-        });
+        })]);
         const callerSession = JSON.parse(await readFile(join(run.artifactDirectory, 'caller-session.json'), 'utf8'));
         expect(callerSession.stopReason).toBe(mode);
         const manifest = JSON.parse(await readFile(join(run.artifactDirectory, 'run.json'), 'utf8'));

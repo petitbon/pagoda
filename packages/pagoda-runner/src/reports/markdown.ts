@@ -16,8 +16,7 @@ export function renderRunReport(input: {
   const agenticLine = input.manifest.agentic
     ? `- Agentic Session: ${input.manifest.agentic.completed ? 'completed' : `incomplete (${input.manifest.agentic.stopReason})`}`
     : '';
-  const adapterFailures = input.manifest.adapterFailures
-    ?? (input.manifest.adapterFailure ? [input.manifest.adapterFailure] : []);
+  const adapterFailures = input.manifest.adapterFailures ?? [];
   const adapterFailureLines = adapterFailures.map((adapterFailure) =>
     `- Adapter Failure: ${adapterFailure.phase} status=${adapterFailure.status} category=${adapterFailure.category}${adapterFailure.dependency ? ` dependency=${adapterFailure.dependency}` : ''} - ${adapterFailure.message}`
   );

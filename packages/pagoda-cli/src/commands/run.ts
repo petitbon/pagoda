@@ -719,7 +719,7 @@ async function runLoadedTargetScenario(input: {
     completedAt,
     durationMs: Date.now() - startedMs,
     ...(agentic ? { agentic } : {}),
-    ...(failures[0] ? { adapterFailure: failures[0], adapterFailures: failures } : {}),
+    ...(failures.length > 0 ? { adapterFailures: failures } : {}),
     ...(observations.collectorDiagnostics.length > 0
       ? { collectorDiagnostics: observations.collectorDiagnostics }
       : {}),

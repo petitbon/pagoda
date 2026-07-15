@@ -22,7 +22,6 @@ export async function writeRunArtifactBundle(input: {
   rawObservations?: unknown;
   callerSession?: PagodaCallerSession;
   logs?: { stdout?: string; stderr?: string };
-  adapterFailure?: PagodaAdapterFailureDiagnostic;
   adapterFailures?: readonly PagodaAdapterFailureDiagnostic[];
 }): Promise<PagodaRunArtifactManifest> {
   await mkdir(join(input.directory, 'logs'), { recursive: true });
@@ -37,11 +36,7 @@ export async function writeRunArtifactBundle(input: {
       }
     : undefined;
   const oracleStatus = input.oracleResult.status;
-  const adapterFailures = input.adapterFailures
-    ? [...input.adapterFailures]
-    : input.adapterFailure
-      ? [input.adapterFailure]
-      : [];
+  const adapterFailures = [...(input.adapterFailures ?? [])];
   const adapterStatus = adapterFailures.some((failure) => failure.status === 'SETUP_FAILED')
     ? 'SETUP_FAILED'
     : adapterFailures.some((failure) => failure.status === 'OBSERVABILITY_FAILED')
@@ -60,7 +55,7 @@ export async function writeRunArtifactBundle(input: {
     status,
     oracleStatus,
     ...(agentic ? { agentic } : {}),
-    ...(adapterFailures[0] ? { adapterFailure: adapterFailures[0], adapterFailures } : {}),
+    ...(adapterFailures.length > 0 ? { adapterFailures } : {}),
     startedAt: input.startedAt,
     completedAt: input.completedAt,
     files: manifestFiles

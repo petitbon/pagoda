@@ -51,8 +51,13 @@ the oracle passes but the caller session stops before `completed`;
 `agentic.stopReason` records why the caller session ended. Lifecycle diagnostics
 take precedence in the aggregate status: any setup-class failure produces
 `SETUP_FAILED`, otherwise an observability-class failure produces
-`OBSERVABILITY_FAILED`. `adapterFailures` records all such failures, while
-`adapterFailure` retains the first diagnostic for consumers that only need one.
+`OBSERVABILITY_FAILED`. `adapterFailures` is the sole ordered lifecycle-failure
+contract and records every such failure.
+
+An individual adapter execution result may expose one diagnostic as
+`metadata.adapterFailure`; that adapter-local result is the input from which the
+CLI builds the aggregate `adapterFailures` list. It is not a second serialized
+run-artifact contract.
 
 ## Canonical Observation
 
