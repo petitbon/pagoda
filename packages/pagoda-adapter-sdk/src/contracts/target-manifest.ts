@@ -15,12 +15,7 @@ export type PagodaTargetManifest = {
     reports?: string;
   };
   channels: readonly string[];
-  observedSystem?: {
-    rootEnv?: string;
-    legacyRootEnv?: string;
-  };
   requiredEnv?: Record<string, readonly string[]>;
-  evidenceAdapters?: readonly string[];
   defaultAdapter?: string;
   scenarioMappings?: readonly {
     pagodaScenarioId: string;

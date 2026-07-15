@@ -5,6 +5,18 @@ The active project now contains only the scenario, evidence, contract,
 observation, oracle, adapter, CLI, and artifact surfaces required to run
 validations.
 
+## 0.5.0 Retired Target Metadata
+
+Version 0.5.0 removes the unused target-manifest fields `observedSystem` and
+`evidenceAdapters`. No Pagoda loader, validator, adapter, or tracked target pack
+consumed them, so retaining the fields implied configuration behavior that did
+not exist.
+
+This is an intentional breaking pre-1.0 release. Target packs must remove those
+fields. Runtime environment requirements belong in `requiredEnv` and adapter
+manifests; adapter selection belongs in `defaultAdapter`, `--adapter`, or the
+channel match.
+
 ## 0.4.0 Adapter Manifest Boundary
 
 Version 0.4.0 removes the pre-0.3 target-level `adapter.entrypoint` form.
