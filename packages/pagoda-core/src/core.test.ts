@@ -184,7 +184,7 @@ const scenarioWithInteraction = (): PagodaScenario => ({
     },
     parity: { required: false, compare: ['status'] }
   },
-  harness: { suite: 'core', scenario: 'interaction', selectedCase: 'legacy-case' },
+  harness: { suite: 'core', scenario: 'interaction', selectedCase: 'base-case' },
   interaction
 });
 
