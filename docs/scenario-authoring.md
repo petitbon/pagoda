@@ -152,8 +152,10 @@ In a standalone observed repo, prefer one bundle per scenario:
   evidence-map.json
 ```
 
-Legacy flat `*.scenario.json` and `*.evidence-map.json` files are still
-supported. Generated contracts live under `.pagoda/contracts/`.
+Flat `*.scenario.json` and `*.evidence-map.json` pairs are also a permanent
+supported layout for compact target packs, including Pagoda's demo target.
+Bundle layout is preferred when a target benefits from colocated scenario
+assets. Generated contracts live under `.pagoda/contracts/`.
 
 ## Evidence Maps
 

@@ -11,7 +11,7 @@ Use this skill when working with a repo that has a `.pagoda/` project pack.
 
 1. Read `.pagoda/pagoda.target.json` first to identify paths, adapters, and supported channels.
 2. Read `.pagoda/evidence/registry.json` and `.pagoda/adapters/*/pagoda.adapter.json` before changing evidence codes or adapter capabilities.
-3. Read existing `.pagoda/scenarios/*/scenario.json` and `.pagoda/scenarios/*/evidence-map.json` before adding new scenarios. Legacy flat `*.scenario.json` and `*.evidence-map.json` files are still supported.
+3. Read existing bundled `.pagoda/scenarios/*/scenario.json` and `.pagoda/scenarios/*/evidence-map.json` files and any flat `.pagoda/scenarios/*.scenario.json` and `.pagoda/scenarios/*.evidence-map.json` pairs before adding scenarios. Both layouts are permanently supported; prefer bundles when scenarios need colocated assets.
 4. Prefer `pagoda scenario create --root .pagoda --id <SCENARIO-ID> --title "<title>" --channel <channel> --interaction generated|agentic|none` for new scenarios, then edit the generated scenario and evidence map. Choose the interaction mode deliberately; default to `generated` unless the scenario needs caller-agent behavior.
 5. Run `pagoda compile --root .pagoda` after scenario or evidence-map changes. Outcome contracts are generated artifacts and should not be hand-edited.
 6. Run `pagoda validate --root .pagoda` before finishing.
@@ -46,7 +46,7 @@ brew install pagoda
 
 - Use `--interaction generated` by default for deterministic request/response scenarios where templated user turns are enough.
 - Use `--interaction agentic` when the user or caller needs a persona, private goal, follow-up behavior, corrections, acceptance or rejection, or confirmation verification.
-- Use `--interaction none` only for legacy scenarios, replay-only scenarios, or cases where the adapter supplies all execution input.
+- Use `--interaction none` for permanent direct-observation scenarios, replay-only scenarios, or cases where the adapter supplies all execution input.
 - Before choosing `agentic`, confirm the selected adapter manifest declares `interactionModes` including `agentic`.
 - For generated scenarios, prefer slots and `seeded-pairwise` coverage over duplicating many near-identical scenarios.
 - For agentic scenarios, keep oracle proof in trusted adapter evidence; caller turns are execution input and artifact context, not PASS proof.

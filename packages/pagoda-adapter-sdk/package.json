@@ -1,6 +1,6 @@
 {
   "name": "@petitbon/pagoda-adapter-sdk",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Target adapter contracts and manifest types for Pagoda validation targets.",
   "license": "Apache-2.0",
   "repository": {
@@ -53,7 +53,7 @@
     "test:unit": "vitest run src --passWithNoTests"
   },
   "dependencies": {
-    "@petitbon/pagoda-core": "0.6.0"
+    "@petitbon/pagoda-core": "0.6.1"
   },
   "devDependencies": {
     "vitest": "^4.1.9"
