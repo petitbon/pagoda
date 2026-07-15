@@ -48,7 +48,7 @@ pagoda update
 pagoda codex install --root .pagoda
 pagoda validate --target demo-agent
 pagoda scenario create --root .pagoda --id PRODUCT-AGENT-LOCATION-ANSWER-001 --title "Location answer" --channel browser-chat
-pagoda scenario create --root .pagoda --id PRODUCT-AGENT-LEGACY-001 --title "Legacy" --interaction none
+pagoda scenario create --root .pagoda --id PRODUCT-AGENT-CHECK-001 --title "Direct check" --interaction none
 pagoda adapter create --root .pagoda --id product-agent-experimental --channel browser-chat
 pagoda validate
 pagoda compile

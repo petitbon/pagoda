@@ -204,8 +204,10 @@ pagoda scenario create --root .pagoda \
 ```
 
 The generator creates generated interaction by default. Use
-`--interaction none` for a legacy-style scenario without generated user turns,
-or `--interaction agentic` for a starter caller-agent scenario.
+`--interaction none` for a permanently supported direct-observation scenario
+without generated user turns, or `--interaction agentic` for a starter
+caller-agent scenario. The target pack owns this choice; `none` is not a
+compatibility fallback.
 It also creates the scenario bundle, evidence map, generated outcome contract,
 and evidence-registry entries. Then:
 

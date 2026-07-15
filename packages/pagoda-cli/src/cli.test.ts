@@ -891,7 +891,7 @@ export default adapter;
     });
   });
 
-  it('can create legacy-style scenarios without generated interaction', async () => {
+  it('can create interaction-less scenarios without generated user turns', async () => {
     await withTempDir(async (directory) => {
       const root = join(directory, 'sample-agent', '.pagoda');
       await captureLogs(async () => {
@@ -905,19 +905,19 @@ export default adapter;
           '--root',
           root,
           '--id',
-          'SAMPLE-AGENT-LEGACY-001',
+          'SAMPLE-AGENT-INTERACTIONLESS-001',
           '--title',
-          'Legacy scenario',
+          'Interaction-less scenario',
           '--channel',
           'browser-chat',
           '--interaction',
           'none'
         ]);
       });
-      const scenarioText = await readFile(join(root, 'scenarios/sample-agent-legacy-001/scenario.json'), 'utf8');
+      const scenarioText = await readFile(join(root, 'scenarios/sample-agent-interactionless-001/scenario.json'), 'utf8');
       expect(scenarioText).not.toContain('"interaction"');
       await expect(captureLogs(async () => {
-        await main(['run', '--root', root, '--scenario', 'SAMPLE-AGENT-LEGACY-001', '--interaction-case', 'case-001', '--reporter', 'json']);
+        await main(['run', '--root', root, '--scenario', 'SAMPLE-AGENT-INTERACTIONLESS-001', '--interaction-case', 'case-001', '--reporter', 'json']);
       })).rejects.toThrow(/has no interaction/);
     });
   });

@@ -345,7 +345,7 @@ describe('@petitbon/pagoda-core', () => {
     });
   });
 
-  it('validates interaction specs and preserves legacy scenarios without interaction', () => {
+  it('validates interaction specs and supports scenarios without interaction', () => {
     const scenario = scenarioWithInteraction();
     expect(validatePagodaScenario({ ...scenario, interaction: undefined }).errors).toEqual([]);
     expect(validatePagodaScenario(scenario).errors).toEqual([]);
