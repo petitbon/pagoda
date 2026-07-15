@@ -21,10 +21,8 @@ export function validateTargetManifestStructure(input: {
   for (const [label, path] of requiredPaths) {
     if (!path || !existsSync(join(targetRoot, path))) errors.push(`${label}: path does not exist`);
   }
-  if (!manifest.adapter?.entrypoint) {
-    if (adapters.length === 0) errors.push('adapter.entrypoint: missing target adapter entrypoint or adapter manifest');
-  } else if (!existsSync(join(targetRoot, manifest.adapter.entrypoint))) {
-    errors.push(`adapter.entrypoint: ${manifest.adapter.entrypoint} does not exist`);
+  if (adapters.length === 0) {
+    errors.push('adapters: at least one pagoda.adapter.json is required');
   }
   const adapterIds = new Set<string>();
   for (const adapter of adapters) {

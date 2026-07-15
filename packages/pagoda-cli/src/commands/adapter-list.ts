@@ -8,7 +8,6 @@ export async function listAdapters(context: PagodaRootContext, io: PagodaCliIo):
   io.stdout(JSON.stringify({
     projectId: context.targetId,
     defaultAdapter: manifest.defaultAdapter ?? null,
-    legacyAdapter: manifest.adapter ?? null,
     adapters: adapters.map((adapter) => ({
       id: adapter.manifest.id,
       channel: adapter.manifest.channel ?? null,

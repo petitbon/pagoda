@@ -22,10 +22,6 @@ export type PagodaTargetManifest = {
   requiredEnv?: Record<string, readonly string[]>;
   evidenceAdapters?: readonly string[];
   defaultAdapter?: string;
-  adapter?: {
-    kind: 'node';
-    entrypoint: string;
-  };
   scenarioMappings?: readonly {
     pagodaScenarioId: string;
     targetEvaluatorId: string;

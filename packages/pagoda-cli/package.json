@@ -1,6 +1,6 @@
 {
   "name": "@petitbon/pagoda-cli",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Command-line interface for validating agentic software with Pagoda target packs.",
   "license": "Apache-2.0",
   "repository": {
@@ -59,9 +59,9 @@
     "pagoda": "node --import tsx src/index.ts"
   },
   "dependencies": {
-    "@petitbon/pagoda-adapter-sdk": "0.3.0",
-    "@petitbon/pagoda-core": "0.3.0",
-    "@petitbon/pagoda-runner": "0.3.0"
+    "@petitbon/pagoda-adapter-sdk": "0.4.0",
+    "@petitbon/pagoda-core": "0.4.0",
+    "@petitbon/pagoda-runner": "0.4.0"
   },
   "devDependencies": {
     "vitest": "^4.1.9"

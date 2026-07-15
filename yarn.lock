@@ -250,11 +250,11 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@petitbon/pagoda-adapter-sdk@npm:0.3.0, @petitbon/pagoda-adapter-sdk@workspace:*, @petitbon/pagoda-adapter-sdk@workspace:packages/pagoda-adapter-sdk":
+"@petitbon/pagoda-adapter-sdk@npm:0.4.0, @petitbon/pagoda-adapter-sdk@workspace:*, @petitbon/pagoda-adapter-sdk@workspace:packages/pagoda-adapter-sdk":
   version: 0.0.0-use.local
   resolution: "@petitbon/pagoda-adapter-sdk@workspace:packages/pagoda-adapter-sdk"
   dependencies:
-    "@petitbon/pagoda-core": "npm:0.3.0"
+    "@petitbon/pagoda-core": "npm:0.4.0"
     vitest: "npm:^4.1.9"
   languageName: unknown
   linkType: soft
@@ -263,16 +263,16 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@petitbon/pagoda-cli@workspace:packages/pagoda-cli"
   dependencies:
-    "@petitbon/pagoda-adapter-sdk": "npm:0.3.0"
-    "@petitbon/pagoda-core": "npm:0.3.0"
-    "@petitbon/pagoda-runner": "npm:0.3.0"
+    "@petitbon/pagoda-adapter-sdk": "npm:0.4.0"
+    "@petitbon/pagoda-core": "npm:0.4.0"
+    "@petitbon/pagoda-runner": "npm:0.4.0"
     vitest: "npm:^4.1.9"
   bin:
     pagoda: ./dist/index.js
   languageName: unknown
   linkType: soft
 
-"@petitbon/pagoda-core@npm:0.3.0, @petitbon/pagoda-core@workspace:*, @petitbon/pagoda-core@workspace:packages/pagoda-core":
+"@petitbon/pagoda-core@npm:0.4.0, @petitbon/pagoda-core@workspace:*, @petitbon/pagoda-core@workspace:packages/pagoda-core":
   version: 0.0.0-use.local
   resolution: "@petitbon/pagoda-core@workspace:packages/pagoda-core"
   dependencies:
@@ -280,12 +280,12 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@petitbon/pagoda-runner@npm:0.3.0, @petitbon/pagoda-runner@workspace:packages/pagoda-runner":
+"@petitbon/pagoda-runner@npm:0.4.0, @petitbon/pagoda-runner@workspace:packages/pagoda-runner":
   version: 0.0.0-use.local
   resolution: "@petitbon/pagoda-runner@workspace:packages/pagoda-runner"
   dependencies:
-    "@petitbon/pagoda-adapter-sdk": "npm:0.3.0"
-    "@petitbon/pagoda-core": "npm:0.3.0"
+    "@petitbon/pagoda-adapter-sdk": "npm:0.4.0"
+    "@petitbon/pagoda-core": "npm:0.4.0"
     vitest: "npm:^4.1.9"
   languageName: unknown
   linkType: soft

@@ -144,13 +144,7 @@ export async function resolveTargetAdapter(input: {
     };
   }
 
-  if (!manifest.adapter?.entrypoint) {
-    throw new Error(`${manifest.id}: target manifest must declare adapter.entrypoint or adapters/<id>/pagoda.adapter.json.`);
-  }
-  const adapterPath = join(targetRoot, manifest.adapter.entrypoint);
-  return {
-    adapterId: 'legacy',
-    entrypoint: manifest.adapter.entrypoint,
-    resolvedPath: adapterPath
-  };
+  throw new Error(
+    `${manifest.id}: no adapter manifest matches; declare adapters/<id>/pagoda.adapter.json and select it with defaultAdapter, --adapter, or channel.`
+  );
 }

@@ -130,10 +130,6 @@ describe('@petitbon/pagoda-cli', () => {
           contracts: 'contracts'
         },
         channels: ['browser-chat'],
-        adapter: {
-          kind: 'node',
-          entrypoint: 'adapter.ts'
-        },
         scenarioMappings: [
           { pagodaScenarioId: 'PGD-1', targetEvaluatorId: 'EDD-1' },
           { pagodaScenarioId: 'PGD-1', targetEvaluatorId: 'EDD-2' }
@@ -152,6 +148,7 @@ describe('@petitbon/pagoda-cli', () => {
     });
     expect(errors).toContain('PGD-1: scenario channel phone is not declared by target manifest');
     expect(errors).toContain('scenarioMappings[1].pagodaScenarioId duplicates PGD-1');
+    expect(errors).toContain('adapters: at least one pagoda.adapter.json is required');
   });
 
   it('reports adapter health for the workspace demo project', async () => {

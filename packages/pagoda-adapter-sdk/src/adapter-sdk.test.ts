@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { PagodaTargetAdapter, PagodaTargetManifest, TargetRunResult } from './index.js';
+import type {
+  PagodaAdapterManifest,
+  PagodaTargetAdapter,
+  PagodaTargetManifest,
+  TargetRunResult
+} from './index.js';
 
 describe('@petitbon/pagoda-adapter-sdk', () => {
   it('defines the target manifest and adapter contract shape used by target packs', async () => {
@@ -10,14 +15,19 @@ describe('@petitbon/pagoda-adapter-sdk', () => {
       paths: {
         scenarios: 'docs/pagoda/scenarios',
         evidenceMaps: 'docs/pagoda/evidence-maps',
-        contracts: 'docs/pagoda/contracts'
+        contracts: 'docs/pagoda/contracts',
+        adapters: 'adapters'
       },
       channels: ['browser-chat'],
-      adapter: {
-        kind: 'node',
-        entrypoint: './adapters/test/index.ts'
-      }
+      defaultAdapter: 'test-local'
     } satisfies PagodaTargetManifest;
+    const adapterManifest = {
+      schemaVersion: 'pagoda.adapter',
+      id: 'test-local',
+      targetId: manifest.id,
+      kind: 'node',
+      entrypoint: './index.ts'
+    } satisfies PagodaAdapterManifest;
     const adapter = {
       targetId: manifest.id,
       async healthCheck() {
@@ -47,6 +57,7 @@ describe('@petitbon/pagoda-adapter-sdk', () => {
       }
     } satisfies PagodaTargetAdapter;
     await expect(adapter.healthCheck()).resolves.toEqual({ status: 'ready' });
-    expect(manifest.adapter.entrypoint).toBe('./adapters/test/index.ts');
+    expect(manifest.defaultAdapter).toBe(adapterManifest.id);
+    expect(adapterManifest.entrypoint).toBe('./index.ts');
   });
 });

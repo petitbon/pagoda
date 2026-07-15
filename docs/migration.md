@@ -5,6 +5,28 @@ The active project now contains only the scenario, evidence, contract,
 observation, oracle, adapter, CLI, and artifact surfaces required to run
 validations.
 
+## 0.4.0 Adapter Manifest Boundary
+
+Version 0.4.0 removes the pre-0.3 target-level `adapter.entrypoint` form.
+Every supported target pack must declare one or more
+`adapters/<id>/pagoda.adapter.json` manifests and select an adapter with
+`defaultAdapter`, `--adapter`, or an unambiguous channel match.
+
+This is an intentional breaking pre-1.0 release under the strict compatibility
+policy below. The removed form had no tracked current target-pack consumer; it
+survived only as a transition fallback and test fixture while current target
+packs already used adapter bundles.
+
+To upgrade a target pack:
+
+1. Create `adapters/<id>/pagoda.adapter.json` beside the adapter entrypoint.
+2. Move the adapter id, channel, entrypoint, interaction modes, evidence codes,
+   and environment requirements into that manifest.
+3. Remove target-level `adapter` and set `defaultAdapter` when the pack has a
+   default.
+4. Upgrade the CLI and all four public packages together, then run `pagoda
+   validate` and the target smoke scenarios.
+
 ## 0.3.0 Strict Pre-1.0 Migration
 
 Pagoda uses strict compatibility before 1.0: a minor release may intentionally
