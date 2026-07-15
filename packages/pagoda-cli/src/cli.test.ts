@@ -46,6 +46,7 @@ describe('@petitbon/pagoda-cli', () => {
           await main(['--help']);
         });
         expect(helpLogs.join('\n')).toContain('pagoda init [--root <path>] [--name <name>]');
+        expect(helpLogs.join('\n')).toContain('[--concurrency <n>] [--sequential <n>]');
 
         const versionLogs = await captureLogs(async () => {
           await main(['--version']);
@@ -368,6 +369,71 @@ describe('@petitbon/pagoda-cli', () => {
         join(root, 'contracts/SAMPLE-AGENT-SAFE-PROPOSAL-002.outcome-contract.json'),
         'utf8'
       )).rejects.toMatchObject({ code: 'ENOENT' });
+    });
+  });
+
+  it('runs concurrent lanes with sequential iterations and unique artifacts', async () => {
+    await withTempDir(async (directory) => {
+      const root = join(directory, 'sample-agent', '.pagoda');
+      await captureLogs(async () => {
+        await main(['init', '--root', root, '--name', 'Sample Agent']);
+      });
+
+      const logs = await captureLogs(async () => {
+        await main([
+          'run',
+          '--root', root,
+          '--scenario', 'SAMPLE-AGENT-SAFE-PROPOSAL-001',
+          '--concurrency', '3',
+          '--sequential', '2',
+          '--reporter', 'json'
+        ]);
+      });
+      const summary = JSON.parse(logs.join('\n')) as {
+        total: number;
+        passed: number;
+        failed: number;
+        batch: { concurrency: number; sequential: number; jobs: number };
+        runs: Array<{
+          artifactDirectory: string;
+          batch: { lane: number; laneCount: number; iteration: number; iterationCount: number };
+        }>;
+      };
+      expect(summary).toMatchObject({
+        total: 6,
+        passed: 6,
+        failed: 0,
+        batch: { concurrency: 3, sequential: 2, jobs: 1 }
+      });
+      expect(summary.runs.map((run) => [run.batch.lane, run.batch.iteration])).toEqual([
+        [1, 1], [1, 2], [2, 1], [2, 2], [3, 1], [3, 2]
+      ]);
+      expect(new Set(summary.runs.map((run) => run.artifactDirectory)).size).toBe(6);
+      for (const run of summary.runs) {
+        expect(run.artifactDirectory).toContain(
+          `lane-${run.batch.lane}-of-3_iteration-${run.batch.iteration}-of-2`
+        );
+        await expect(readFile(join(run.artifactDirectory, 'run.json'), 'utf8')).resolves.toContain('pagoda.run-artifact');
+      }
+
+      const terminalLogs = await captureLogs(async () => {
+        await main([
+          'run',
+          '--root', root,
+          '--scenario', 'SAMPLE-AGENT-SAFE-PROPOSAL-001',
+          '--concurrency', '2',
+          '--sequential', '1'
+        ]);
+      });
+      expect(terminalLogs.join('\n')).toContain('lane 1/2 iteration 1/1');
+      expect(terminalLogs.join('\n')).toContain('Batch  1 job × 2 lanes × 1 sequential iteration');
+
+      await expect(main([
+        'run',
+        '--root', root,
+        '--scenario', 'SAMPLE-AGENT-SAFE-PROPOSAL-001',
+        '--sequential', '0'
+      ])).rejects.toThrow('--sequential must be a positive integer.');
     });
   });
 

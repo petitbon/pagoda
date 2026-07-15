@@ -25,3 +25,9 @@ export function positiveIntegerArg(args: readonly string[], name: string, fallba
   if (Number.isInteger(parsed) && parsed > 0 && String(parsed) === value.trim()) return parsed;
   throw new Error(`${name} must be a positive integer.`);
 }
+
+export function optionalPositiveIntegerArg(args: readonly string[], name: string): number | undefined {
+  const value = argValue(args, name);
+  if (value === undefined) return undefined;
+  return positiveIntegerArg(args, name, 1);
+}

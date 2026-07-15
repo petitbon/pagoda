@@ -121,6 +121,11 @@ In the development workspace, `--target <id>` selects a target under
   Generated interaction scenarios run one deterministic case by default. Use
   `--interaction-case <case-id|index>` for repros and `--interaction-cases all`
   for pairwise coverage.
+  Use `--concurrency <lanes> --sequential <iterations>` to run repeated batches.
+  Every selected scenario/channel/interaction job receives the requested
+  number of concurrent lanes, and each lane awaits one iteration before
+  starting the next. Omitting `--sequential` leaves `--concurrency` as a worker
+  limit without replicating jobs.
   The default reporter prints Vitest-style run lines and a summary. Use
   `--reporter json` or `--json` for automation.
 - `replay` verifies artifact paths and hashes, then reruns oracle evaluation

@@ -1,5 +1,5 @@
 import type { PagodaCliIo, PagodaCommandResult } from '../types.js';
-import { argValue, hasArg, positiveIntegerArg, runReporter } from './args.js';
+import { argValue, hasArg, optionalPositiveIntegerArg, positiveIntegerArg, runReporter } from './args.js';
 import { usage } from './usage.js';
 import { readCliVersion } from '../shared/version.js';
 import { resolveRootContext } from '../target-pack/context.js';
@@ -67,6 +67,7 @@ export async function main(args = process.argv.slice(2), io: PagodaCliIo = conso
       interactionCases: argValue(args, '--interaction-cases'),
       artifactDirectory: argValue(args, '--artifact-directory'),
       concurrency: positiveIntegerArg(args, '--concurrency', 1),
+      sequential: optionalPositiveIntegerArg(args, '--sequential'),
       reporter: runReporter(args),
       io
     });

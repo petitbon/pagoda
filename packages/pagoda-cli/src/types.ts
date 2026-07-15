@@ -2,6 +2,7 @@ import type { CanonicalCollectorDiagnostic, PagodaCallerSession, PagodaEvidenceM
 import type { PagodaAdapterManifest, PagodaTargetManifest } from '@petitbon/pagoda-adapter-sdk';
 import type { evaluatePagodaOutcomeContract } from '@petitbon/pagoda-core';
 import type { PagodaAdapterFailureDiagnostic } from '@petitbon/pagoda-runner';
+import type { PagodaBatchCoordinates } from './commands/run-batch.js';
 
 export type LoadedScenario = { path: string; scenario: PagodaScenario; hash: string };
 export type LoadedEvidenceMap = { path: string; evidenceMap: PagodaEvidenceMap; hash: string };
@@ -40,6 +41,7 @@ export type PagodaRunCliResult = {
   scenarioId: string;
   channel: string;
   interactionCaseId?: string;
+  batch?: PagodaBatchCoordinates;
   status: PagodaEvidenceScenarioStatus;
   adapterRunStatus: string;
   evidence: {
@@ -72,6 +74,11 @@ export type PagodaRunCliSummary = {
   total: number;
   passed: number;
   failed: number;
+  batch?: {
+    concurrency: number;
+    sequential: number;
+    jobs: number;
+  };
   runs: PagodaRunCliResult[];
 };
 

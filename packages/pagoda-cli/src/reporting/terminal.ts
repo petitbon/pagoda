@@ -46,8 +46,11 @@ const formatRunLine = (run: PagodaRunCliResult, context: PagodaRootContext): str
   const artifact = relative(context.projectRoot, run.artifactDirectory);
   const clauseWord = clauses.total === 1 ? 'clause' : 'clauses';
   const caseText = run.interactionCaseId ? ` ${gray(run.interactionCaseId)}` : '';
+  const batchText = run.batch
+    ? ` ${gray(`lane ${run.batch.lane}/${run.batch.laneCount} iteration ${run.batch.iteration}/${run.batch.iterationCount}`)}`
+    : '';
   return [
-    ` ${statusMarker(run)} ${run.scenarioId}${caseText}`,
+    ` ${statusMarker(run)} ${run.scenarioId}${caseText}${batchText}`,
     `(${clauses.passed}/${clauses.total} ${clauseWord}, ${run.evidence.accepted} accepted evidence)`,
     formatDuration(run.durationMs),
     gray(`adapter ${run.adapterRunStatus}`),
@@ -166,13 +169,16 @@ export function formatRunSummaryFooter(summary: PagodaRunCliSummary): string {
   const evidenceTotals = sumEvidence(summary.runs);
   return [
     '',
+    summary.batch
+      ? `       Batch  ${summary.batch.jobs} ${summary.batch.jobs === 1 ? 'job' : 'jobs'} × ${summary.batch.concurrency} lanes × ${summary.batch.sequential} sequential ${summary.batch.sequential === 1 ? 'iteration' : 'iterations'}`
+      : null,
     `   Scenarios  ${green(`${summary.passed} passed`)}${summary.failed ? ` | ${red(`${summary.failed} failed`)}` : ''} (${summary.total})`,
     `      Clauses  ${green(`${clauseTotals.passed} passed`)}${clauseTotals.failed ? ` | ${red(`${clauseTotals.failed} failed`)}` : ''}${clauseTotals.missing ? ` | ${yellow(`${clauseTotals.missing} missing`)}` : ''} (${clauseTotals.total})`,
     `     Evidence  ${evidenceTotals.accepted} accepted | ${evidenceTotals.rejected} rejected | ${evidenceTotals.setup} setup`,
     `     Start at  ${summary.startedAt}`,
     `     Duration  ${formatDuration(summary.durationMs)}`,
     ''
-  ].join('\n');
+  ].filter((line): line is string => line !== null).join('\n');
 }
 
 export function formatRunSummary(summary: PagodaRunCliSummary, context: PagodaRootContext): string {

@@ -29,6 +29,7 @@ import {
   writeRunArtifactBundle,
   type PagodaAdapterFailureDiagnostic
 } from '@petitbon/pagoda-runner';
+import { runPagodaBatch, type PagodaBatchCoordinates } from './run-batch.js';
 import type { PagodaCliIo, PagodaCliReporter, PagodaCommandResult, PagodaRootContext, PagodaRunCliResult, PagodaRunCliSummary } from '../types.js';
 import {
   missingAdapterEvidenceCapabilities,
@@ -241,6 +242,7 @@ export async function runTargetScenario(input: {
   interactionCases: string | undefined;
   artifactDirectory: string | undefined;
   concurrency: number;
+  sequential: number | undefined;
   reporter: PagodaCliReporter;
   io: PagodaCliIo;
 }): Promise<PagodaCommandResult> {
@@ -336,7 +338,10 @@ export async function runTargetScenario(input: {
     return { ...job, scenario, evidenceMap, contract, adapter };
   };
 
-  const runOne = async (job: PreparedRunJob): Promise<PagodaRunCliResult> =>
+  const runOne = async (
+    job: PreparedRunJob,
+    batch: PagodaBatchCoordinates | undefined
+  ): Promise<PagodaRunCliResult> =>
     runLoadedTargetScenario({
       context,
       root,
@@ -348,26 +353,32 @@ export async function runTargetScenario(input: {
       selectedChannel: job.channel,
       seed: input.seed,
       interaction: job.interaction,
-      artifactDirectory: input.artifactDirectory
+      artifactDirectory: input.artifactDirectory,
+      batch
     });
 
   const runJobs = async (jobs: PreparedRunJob[]): Promise<PagodaRunCliResult[]> => {
-    const results = new Array<PagodaRunCliResult>(jobs.length);
-    let nextIndex = 0;
-    const workerCount = Math.min(input.concurrency, jobs.length);
-    const worker = async () => {
-      while (nextIndex < jobs.length) {
-        const index = nextIndex;
-        nextIndex += 1;
-        const job = jobs[index];
-        const run = await runOne(job);
-        results[index] = run;
+    return runPagodaBatch({
+      jobs,
+      concurrency: input.concurrency,
+      sequential: input.sequential,
+      run: ({ job, batch }) => runOne(job, batch),
+      onResult: (run) => {
         if (input.reporter !== 'json') input.io.stdout(formatRunProgress(run, context));
       }
-    };
-    await Promise.all(Array.from({ length: workerCount }, () => worker()));
-    return results;
+    });
   };
+
+  const batchSummary = (jobs: number): Pick<PagodaRunCliSummary, 'batch'> =>
+    input.sequential === undefined
+      ? {}
+      : {
+          batch: {
+            concurrency: input.concurrency,
+            sequential: input.sequential,
+            jobs
+          }
+        };
 
   if (runAll) {
     const summaryStartedAt = new Date().toISOString();
@@ -402,6 +413,7 @@ export async function runTargetScenario(input: {
       total: runs.length,
       passed,
       failed,
+      ...batchSummary(preparedJobs.length),
       runs
     };
     input.io.stdout(input.reporter === 'json' ? JSON.stringify(summary, null, 2) : formatRunSummaryFooter(summary));
@@ -419,12 +431,15 @@ export async function runTargetScenario(input: {
   if (runnableJobs.length === 0) {
     throw new Error(`${context.targetId}: scenario ${scenarioId} does not declare channel ${selectedChannels.join(', ')}.`);
   }
-  if (input.artifactDirectory && runnableJobs.length > 1) {
+  const requestedRunCount = runnableJobs.length * (
+    input.sequential === undefined ? 1 : input.concurrency * input.sequential
+  );
+  if (input.artifactDirectory && requestedRunCount > 1) {
     throw new Error(`${context.targetId}: --artifact-directory requires a single scenario/channel/interaction case run.`);
   }
-  if (runnableJobs.length === 1) {
+  if (runnableJobs.length === 1 && input.sequential === undefined) {
     const job = runnableJobs[0];
-    const run = await runOne(await prepareJob(job));
+    const run = await runOne(await prepareJob(job), undefined);
     input.io.stdout(input.reporter === 'json' ? JSON.stringify(run, null, 2) : formatRunResult(run, context));
     return { exitCode: isSuccessfulRun(run) ? 0 : 1 };
   }
@@ -447,6 +462,7 @@ export async function runTargetScenario(input: {
     total: runs.length,
     passed,
     failed,
+    ...batchSummary(preparedJobs.length),
     runs
   };
   input.io.stdout(input.reporter === 'json' ? JSON.stringify(summary, null, 2) : formatRunSummaryFooter(summary));
@@ -465,6 +481,7 @@ async function runLoadedTargetScenario(input: {
   seed: string | undefined;
   interaction: PagodaMaterializedInteraction | undefined;
   artifactDirectory: string | undefined;
+  batch: PagodaBatchCoordinates | undefined;
 }): Promise<PagodaRunCliResult> {
   const { context, root, manifest, scenario, evidenceMap, contract, selectedChannel } = input;
   const scenarioId = scenario.id;
@@ -473,16 +490,19 @@ async function runLoadedTargetScenario(input: {
   const artifactRoot = context.mode === 'target-pack'
     ? join(context.targetRoot, 'artifacts')
     : join(context.projectRoot, 'artifacts');
+  const defaultArtifactDirectory = buildRunArtifactDirectory({
+    artifactRoot,
+    startedAt,
+    targetId: context.targetId,
+    scenarioId,
+    channel: selectedChannel,
+    interactionCaseId: input.interaction?.caseId
+  });
   const artifactDirectory = input.artifactDirectory
     ? resolve(context.projectRoot, input.artifactDirectory)
-    : buildRunArtifactDirectory({
-        artifactRoot,
-        startedAt,
-        targetId: context.targetId,
-        scenarioId,
-        channel: selectedChannel,
-        interactionCaseId: input.interaction?.caseId
-      });
+    : input.batch
+      ? `${defaultArtifactDirectory}_lane-${input.batch.lane}-of-${input.batch.laneCount}_iteration-${input.batch.iteration}-of-${input.batch.iterationCount}`
+      : defaultArtifactDirectory;
   const plan = createPagodaRunPlan({
     targetId: context.targetId,
     projectRoot: context.projectRoot,
@@ -684,6 +704,7 @@ async function runLoadedTargetScenario(input: {
     scenarioId,
     channel: selectedChannel,
     interactionCaseId: plan.interaction?.caseId,
+    ...(input.batch ? { batch: input.batch } : {}),
     status: artifactManifest.status,
     adapterRunStatus: result.status,
     evidence: {

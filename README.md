@@ -269,6 +269,20 @@ Run every active scenario supported by an adapter:
 pagoda run --adapter product-agent-local
 ```
 
+Run ten isolated copies of one scenario concurrently and repeat each copy twice
+in order:
+
+```bash
+pagoda run --scenario PRODUCT-AGENT-SAFE-PROPOSAL-001 --concurrency 10 --sequential 2
+```
+
+Supplying `--sequential <n>` activates batch mode. Pagoda creates
+`--concurrency` lanes for every selected scenario/channel/interaction job and
+runs `n` iterations serially inside each lane, while no more than
+`--concurrency` attempts are active globally. The example above therefore
+writes 20 independent proof bundles. Without `--sequential`, `--concurrency`
+retains its existing meaning as a worker limit over the selected jobs.
+
 `pagoda run` prints a concise terminal reporter by default. Add
 `--reporter json` or `--json` when another tool needs structured output.
 

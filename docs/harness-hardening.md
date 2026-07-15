@@ -38,6 +38,11 @@ broken test environment cannot masquerade as an outcome failure or pass.
 - Use `pagoda run --concurrency <n>` only when the target pack can isolate
   fixtures, sessions, and side effects across concurrent jobs. Keep live phone
   and other single-resource harnesses at `1`.
+- Add `--sequential <n>` to create `--concurrency` lanes per selected job and
+  repeat each lane in order. A command with `--concurrency 10 --sequential 2`
+  executes 20 attempts with at most 10 active at once. Every attempt receives a
+  separate run id and proof directory; adapters must also allocate independent
+  target sessions and fixtures.
 
 ## Standalone Packs
 
